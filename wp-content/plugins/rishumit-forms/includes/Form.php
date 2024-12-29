@@ -43,17 +43,24 @@ class Form
         // Retrieve submitted fields
         $fields = $record->get('fields');
 
+        // Log all fields data in JSON format for debugging
+        $json_fields = json_encode($fields, JSON_PRETTY_PRINT);
+        error_log('All Form Fields: ' . $json_fields);
+
         // Extract user and request data
         $user = $this->extractUserData($fields, $form_name);
         $request = $this->extractRequestData($fields, $form_name);
 
-        // Log the user and request data to debug.log
-        error_log('User Data: ' . print_r($user, true));
-        error_log('Request Data: ' . print_r($request, true));
+        // Log the user and request data to debug.log in JSON format
+        $json_user = json_encode($user, JSON_PRETTY_PRINT);
+        $json_request = json_encode($request, JSON_PRETTY_PRINT);
+        error_log('User Data: ' . $json_user);
+        error_log('Request Data: ' . $json_request);
 
         // Optional: Stop form submission for testing
         wp_die('Form submission stopped for testing purposes');
     }
+
 
         
 //        // Get the form name
@@ -429,4 +436,56 @@ class Form
             $ajax_handler->add_error($fieldName, __("Invalid name format.", "rishumit-plugin"));
         }
     }
+
+    private function extractChildren($fields)
+    {
+        $children = [];
+
+        // Check the number of children from the 'child' field
+        $num_children = isset($fields['child']) ? (int)$fields['child']['value'] : 0;
+
+        // If there are no children, return an empty array
+        if ($num_children == 0) {
+            return $children;
+        }
+
+        // Loop through and process each child
+        for ($i = 1; $i <= $num_children; $i++) {
+            // Construct the field names for each child
+            $first_name_field = "hb"; // First name field (for child $i)
+            $last_name_field = "jy"; // Last name field
+            $ssn_field = "xb"; // SSN field
+            $father_name_field = "tv"; // Father’s name field
+            $mother_name_field = "bd"; // Mother’s name field
+            $birth_year_field = "xa"; // Birth year field
+
+            // Collect data for each child if available
+            $first_name = isset($fields[$first_name_field]) ? $fields[$first_name_field]['value'] : '';
+            $last_name = isset($fields[$last_name_field]) ? $fields[$last_name_field]['value'] : '';
+            $ssn = isset($fields[$ssn_field]) ? $fields[$ssn_field]['value'] : '';
+            $father_name = isset($fields[$father_name_field]) ? $fields[$father_name_field]['value'] : '';
+            $mother_name = isset($fields[$mother_name_field]) ? $fields[$mother_name_field]['value'] : '';
+            $birth_year = isset($fields[$birth_year_field]) ? $fields[$birth_year_field]['value'] : '';
+
+            // Add the child to the array if all required data is available
+            if ($first_name && $last_name && $ssn) {
+                $children[] = [
+                    'first_name' => $first_name,
+                    'last_name' => $last_name,
+                    'ssn' => $ssn,
+                    'father_name' => $father_name,
+                    'mother_name' => $mother_name,
+                    'birth_year' => $birth_year,
+                ];
+            } else {
+                // Log that some required fields are missing for this child
+                error_log("Skipping child $i due to missing required data.");
+            }
+        }
+
+        return $children;
+    }
+
+
+
 }
