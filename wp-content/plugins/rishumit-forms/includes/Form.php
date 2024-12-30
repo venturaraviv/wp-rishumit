@@ -60,19 +60,7 @@ class Form
         // Optional: Stop form submission for testing
         wp_die('Form submission stopped for testing purposes');
     }
-
-
-        
-//        // Get the form name
-//        $form_name = $record->get_form_settings('form_name') ?? 'Unnamed Form';
-//
-//        // Retrieve submitted fields
-//        $fields = $record->get('fields');
-//
-//        // Extract user and request data
-//        $user = $this->extractUserData($fields, $form_name);
-//        $request = $this->extractRequestData($fields, $form_name);
-//
+        //For Prod
 //        // Check if Strapi endpoints are configured
 //        if ($this->strapiEndpointUser && $this->strapiEndpointRequest) {
 //            $this->sendToStrapi($this->strapiEndpointUser, $user);
