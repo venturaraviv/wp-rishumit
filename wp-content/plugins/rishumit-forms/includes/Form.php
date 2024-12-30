@@ -44,12 +44,39 @@ class Form
         $fields = $record->get('fields');
 
         // Log all fields for debugging purposes (optional)
-        // error_log('Filtered Form Fields: ' . print_r($fields, true));
+        error_log('Filtered Form Fields: ' . print_r($fields, true));
+
+        // Check if the field for address change request for children is relevant
+        $change_address_field = isset($fields['האם יש צורך בשינוי כתובת עבור בן\/בת הזוג וילדים?']) ? $fields['האם יש צורך בשינוי כתובת עבור בן\/בת הזוג וילדים?']['value'] : '';
+
+        // If the field contains "ילדים" or "ילדים ובן/ת זוג", call extractChildren
+        if (strpos($change_address_field, 'ילדים') !== false) {
+            $children = $this->extractChildren($fields);
+            if (!empty($children)) {
+                // Log children data if relevant
+                error_log('Children Data: ' . print_r($children, true));
+            }
+        }
 
         // Automatically process user data
         $user = $this->extractUserData($fields, $form_name);
         $request = $this->extractRequestData($fields, $form_name);
         
+        $children = $this->extractChildren($fields);
+
+        // If children are found, add them to the user data
+        if (!empty($children)) {
+            $user['children'] = $children;  // Add the children array to the user data
+        }
+
+        // Extract spouse data (if relevant)
+        $spouse = $this->extractSpouseData($fields);
+
+        // If spouse data exists, add it to the user object
+        if (!empty($spouse)) {
+            $user['spouse'] = $spouse;
+        }
+
         // Decode any Unicode characters
         $json_user = json_encode($user, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
         $json_request = json_encode($request, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
@@ -71,6 +98,7 @@ class Form
         //     error_log("Request Data: " . json_encode($request));
         // }
     }
+
 
     private function extractUserData($fields, $form_name)
     {
@@ -96,9 +124,9 @@ class Form
             $user_data[$decoded_title] = $field['value'] ?? '';  // Default to empty string if no value
         }
 
+        // Return the user data
         return $user_data;
     }
-
 
     private function extractRequestData($fields, $form_name)
     {
@@ -180,54 +208,88 @@ class Form
         }
     }
 
-    private function extractChildren($fields)
+    private function extractSpouseData($fields)
     {
-        $children = [];
+        $spouse = [];
 
-        // Check the number of children from the 'child' field
-        $num_children = isset($fields['child']) ? (int)$fields['child']['value'] : 0;
+        // Retrieve the value of the field using its id 'nosaf'
+        $address_change_needed = isset($fields['nosaf']) ? $fields['nosaf']['value'] : '';
+        
+        // If the value contains "ילדים" or "ילדים ובן/ת זוג", extract the children and spouse data
+        if (strpos($address_change_needed, 'ילדים') !== false || strpos($address_change_needed, 'בן/ת זוג') !== false) {
+            // Extract spouse data
+            $spouse['first_name'] = isset($fields['spouse_first_name']) ? $fields['spouse_first_name']['value'] : '';
+            $spouse['last_name'] = isset($fields['spouse_last_name']) ? $fields['spouse_last_name']['value'] : '';
+            $spouse['id_number'] = isset($fields['spouse_id']) ? $fields['spouse_id']['value'] : '';
+            $spouse['father_name'] = isset($fields['spouse_father_name']) ? $fields['spouse_father_name']['value'] : '';
+            $spouse['mother_name'] = isset($fields['spouse_mother_name']) ? $fields['spouse_mother_name']['value'] : '';
+            $spouse['birth_year'] = isset($fields['spouse_birth_year']) ? $fields['spouse_birth_year']['value'] : '';
 
-        // If there are no children, return an empty array
-        if ($num_children == 0) {
-            return $children;
-        }
-
-        // Loop through and process each child
-        for ($i = 1; $i <= $num_children; $i++) {
-            // Construct the field names for each child
-            $first_name_field = "hb"; // First name field (for child $i)
-            $last_name_field = "jy"; // Last name field
-            $ssn_field = "xb"; // SSN field
-            $father_name_field = "tv"; // Father’s name field
-            $mother_name_field = "bd"; // Mother’s name field
-            $birth_year_field = "xa"; // Birth year field
-
-            // Collect data for each child if available
-            $first_name = isset($fields[$first_name_field]) ? $fields[$first_name_field]['value'] : '';
-            $last_name = isset($fields[$last_name_field]) ? $fields[$last_name_field]['value'] : '';
-            $ssn = isset($fields[$ssn_field]) ? $fields[$ssn_field]['value'] : '';
-            $father_name = isset($fields[$father_name_field]) ? $fields[$father_name_field]['value'] : '';
-            $mother_name = isset($fields[$mother_name_field]) ? $fields[$mother_name_field]['value'] : '';
-            $birth_year = isset($fields[$birth_year_field]) ? $fields[$birth_year_field]['value'] : '';
-
-            // Add the child to the array if all required data is available
-            if ($first_name && $last_name && $ssn) {
-                $children[] = [
-                    'first_name' => $first_name,
-                    'last_name' => $last_name,
-                    'ssn' => $ssn,
-                    'father_name' => $father_name,
-                    'mother_name' => $mother_name,
-                    'birth_year' => $birth_year,
-                ];
-            } else {
-                // Log that some required fields are missing for this child
-                error_log("Skipping child $i due to missing required data.");
+            // If the spouse data is complete (all fields filled), return it
+            if (!empty($spouse['first_name']) && !empty($spouse['last_name']) && !empty($spouse['id_number'])) {
+                return $spouse;
             }
         }
 
+        // Return the spouse data (empty if not present)
+        return [];
+    }
+    
+    private function extractChildren($fields)
+{
+    $children = [];  // This will store all the children data
+
+    // Check the number of children from the 'child' field
+    $num_children = isset($fields['child']) ? (int)$fields['child']['value'] : 0;
+
+    // If no children, return an empty array
+    if ($num_children == 0) {
+        error_log("No children data available.");
         return $children;
     }
+
+    // Loop through the number of children and collect data
+    for ($i = 1; $i <= $num_children; $i++) {
+        // Construct the field names dynamically based on child number (e.g., 'child_1_first_name', 'child_2_last_name', etc.)
+        $child_prefix = "child_{$i}"; // Dynamic child identifier (e.g., "child_1", "child_2")
+
+        $first_name_field = $child_prefix . '_first_name';
+        $last_name_field = $child_prefix . '_last_name';
+        $id_field = $child_prefix . '_id';
+        $father_name_field = $child_prefix . '_father_name';
+        $mother_name_field = $child_prefix . '_mother_name';
+        $birth_year_field = $child_prefix . '_birth_year';
+
+        // Collect data for each child if available
+        $first_name = isset($fields[$first_name_field]) ? $fields[$first_name_field]['value'] : '';
+        $last_name = isset($fields[$last_name_field]) ? $fields[$last_name_field]['value'] : '';
+        $id = isset($fields[$id_field]) ? $fields[$id_field]['value'] : '';
+        $father_name = isset($fields[$father_name_field]) ? $fields[$father_name_field]['value'] : '';
+        $mother_name = isset($fields[$mother_name_field]) ? $fields[$mother_name_field]['value'] : '';
+        $birth_year = isset($fields[$birth_year_field]) ? $fields[$birth_year_field]['value'] : '';
+
+        // Add the child to the array if all required data is available
+        if ($first_name && $last_name && $id) {
+            $children[] = [
+                'first_name' => $first_name,
+                'last_name' => $last_name,
+                'id' => $id,
+                'father_name' => $father_name,
+                'mother_name' => $mother_name,
+                'birth_year' => $birth_year,
+            ];
+        } else {
+            // Log that some required fields are missing for this child
+            error_log("Skipping child $i due to missing required data.");
+        }
+    }
+
+    return $children;
+}
+
+    
+
+
 
 
 
