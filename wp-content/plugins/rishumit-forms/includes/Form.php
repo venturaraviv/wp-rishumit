@@ -39,72 +39,108 @@ class Form
     {
         // Retrieve the form name
         $form_name = $record->get_form_settings('form_name') ?? 'Unnamed Form';
-
+    
         // Retrieve submitted fields
         $fields = $record->get('fields');
 
-        // Log all fields data in JSON format for debugging
-        $json_fields = json_encode($fields, JSON_PRETTY_PRINT);
-        error_log('All Form Fields: ' . $json_fields);
-
-        // Extract user and request data
+        // Print all fields to the debug.log
+        error_log('All Form Fields: ' . print_r($fields, true));
+    
+        // Remove fields with the type "step" (or any other types you don't care about)
+        $fields = array_filter($fields, function($field) {
+            return $field['type'] !== 'step';  // Exclude "step" fields
+        });
+    
+        // Log all fields data for debugging
         $user = $this->extractUserData($fields, $form_name);
         $request = $this->extractRequestData($fields, $form_name);
-
+    
+        // Decode any Unicode characters
+        $json_user = json_encode($user, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
+        $json_request = json_encode($request, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
+    
         // Log the user and request data to debug.log in JSON format
-        $json_user = json_encode($user, JSON_PRETTY_PRINT);
-        $json_request = json_encode($request, JSON_PRETTY_PRINT);
         error_log('User Data: ' . $json_user);
         error_log('Request Data: ' . $json_request);
-
+    
         // Optional: Stop form submission for testing
         wp_die('Form submission stopped for testing purposes');
+        
+        // For production, send data to Strapi (uncomment when ready for production)
+        // if ($this->strapiEndpointUser && $this->strapiEndpointRequest) {
+        //     $this->sendToStrapi($this->strapiEndpointUser, $user);
+        //     $this->sendToStrapi($this->strapiEndpointRequest, $request);
+        // } else {
+        //     // Log data locally if Strapi is not configured
+        //     error_log("Strapi endpoints are not configured. User Data: " . json_encode($user));
+        //     error_log("Request Data: " . json_encode($request));
+        // }
     }
-        //For Prod
-//        // Check if Strapi endpoints are configured
-//        if ($this->strapiEndpointUser && $this->strapiEndpointRequest) {
-//            $this->sendToStrapi($this->strapiEndpointUser, $user);
-//            $this->sendToStrapi($this->strapiEndpointRequest, $request);
-//        } else {
-//            // Log the data locally if Strapi is not configured
-//            error_log("Strapi endpoints are not configured. User Data: " . json_encode($user));
-//            error_log("Request Data: " . json_encode($request));
-//        }
-//
-//        // Allow form submission to proceed
+    
 
     private function extractUserData($fields, $form_name)
     {
+        // // Common fields for all forms
+        // $user_data = [
+        //     'first_name' => $fields['name']['value'] ?? '',
+        //     'last_name' => $fields['fam']['value'] ?? '',
+        //     'email' => $fields['email']['value'] ?? '',
+        //     'phone' => $fields['phone']['value'] ?? '',
+        //     'ssn' => $fields['ssn']['value'] ?? '',
+        // ];
+
+       // Initialize the base user data array
+        $user_data = [];
+
+        // Keep 'name' (first_name) and 'fam' (last_name) as explicit fields
+        $user_data['first_name'] = $fields['name']['value'] ?? '';
+        $user_data['last_name'] = $fields['fam']['value'] ?? '';
+
+        // Loop through the fields and generate dynamic keys from titles or fallback to field IDs
+        foreach ($fields as $field_key => $field) {
+            // Skip HTML fields or any other non-relevant field types
+            if ($field['type'] === 'html') {
+                continue;
+            }
+
+            // Skip 'name' and 'fam' since we've already handled them above
+            if ($field_key === 'name' || $field_key === 'fam') {
+                continue;
+            }
+
+            // Check if the field has a title and its value is set
+            if (isset($field['title']) && !empty($field['title'])) {
+                // Decode the title from Unicode to the actual character
+                $decoded_title = json_decode('"' . $field['title'] . '"');
+            } else {
+                // If no title exists, use the field's ID as the key or any other fallback string
+                $decoded_title = $field_key;  // Using the field's key (e.g., field_12345) as a fallback
+            }
+
+            // Add the field value to the user_data array with the decoded title or fallback as the key
+            $user_data[$decoded_title] = $field['value'] ?? '';  // Default to empty string if no value
+        }
+
+
         // Extract user data dynamically based on the form
         switch ($form_name) {
             case 'ESTA':
-                return [
-                    'first_name' => $fields['name']['value'] ?? '',
-                    'last_name' => $fields['fam']['value'] ?? '',
-                    'email' => $fields['email']['value'] ?? '',
-                    'phone' => $fields['phone']['value'] ?? '',
-                    'ssn' => $fields['ssn']['value'] ?? '',
+                return array_merge($user_data, [
                     'address' => [
-                        'street' => $fields['st']['value'] ?? '',
-                        'house_number' => $fields['bait']['value'] ?? '',
-                        'apartment_number' => $fields['dira']['value'] ?? '',
-                        'city' => $fields['ir']['value'] ?? '',
+                        'street' => $fields['field_7b0669b']['value'] ?? '',
+                        'house_number' => $fields['field_2454023']['value'] ?? '',
+                        'apartment_number' => $fields['field_7b0669b']['value'] ?? '', // Assuming this field for apartment
+                        'city' => $fields['field_2454023']['value'] ?? '', // Assuming this field for city
                     ],
-                    'marital_status' => $fields['ishi']['value'] ?? '',
+                    'marital_status' => $fields['field_2217507']['value'] ?? '', // Assuming this for marital status
                     'date_of_birth' => [
-                        'year' => $fields['yy']['value'] ?? '',
-                        'month' => $fields['ho']['value'] ?? '',
-                        'day' => $fields['yom']['value'] ?? '',
+                        'year' => $fields['field_0b6639f']['value'] ?? '', // Assuming this field for year of birth
+                        'month' => $fields['field_0b6639f']['value'] ?? '', // Same for month
+                        'day' => $fields['field_0b6639f']['value'] ?? '', // Same for day
                     ],
-                    'previous_city' => $fields['eretz']['value'] ?? '',
-                ];
+                ]);            
             case 'Green Form':
-                return [
-                    'first_name' => $fields['name']['value'] ?? '',
-                    'last_name' => $fields['fam']['value'] ?? '',
-                    'email' => $fields['email']['value'] ?? '',
-                    'phone' => $fields['phone']['value'] ?? '',
-                    'ssn' => $fields['ssn']['value'] ?? '',
+                return array_merge($user_data, [
                     'medical_declaration' => [
                         'driving_license_category' => $fields['field_788fccf']['value'] ?? '',
                         'medical_conditions' => [
@@ -114,14 +150,9 @@ class Form
                         ],
                         'acceptance' => $fields['field_c1b93e9']['value'] ?? '',
                     ],
-                ];
+                ]);
             case 'Income Tax Exemption':
-                return [
-                    'first_name' => $fields['name']['value'] ?? '',
-                    'last_name' => $fields['fam']['value'] ?? '',
-                    'email' => $fields['email']['value'] ?? '',
-                    'phone' => $fields['phone']['value'] ?? '',
-                    'ssn' => $fields['ssn']['value'] ?? '',
+                return array_merge($user_data, [
                     'address' => [
                         'street' => $fields['street']['value'] ?? '',
                         'house_number' => $fields['app']['value'] ?? '',
@@ -136,14 +167,9 @@ class Form
                         'fund_component' => $fields['field_7674580']['value'] ?? '',
                         'additional_exemption_reason' => $fields['field_6581701']['value'] ?? '',
                     ],
-                ];
+                ]);
             case 'Birth Name Registration':
-                return [
-                    'first_name' => $fields['name']['value'] ?? '',
-                    'last_name' => $fields['fam']['value'] ?? '',
-                    'email' => $fields['email']['value'] ?? '',
-                    'phone' => $fields['phone']['value'] ?? '',
-                    'ssn' => $fields['ssn']['value'] ?? '',
+                return array_merge($user_data, [
                     'address' => [
                         'city' => $fields['ir']['value'] ?? '',
                         'street' => $fields['st']['value'] ?? '',
@@ -165,14 +191,9 @@ class Form
                             'city' => $fields['hosa']['value'] ?? '',
                         ],
                     ],
-                ];
+                ]);
             case 'Tax coordination':
-                return [
-                    'first_name' => $fields['name']['value'] ?? '',
-                    'last_name' => $fields['fam']['value'] ?? '',
-                    'email' => $fields['field_fe2dd78']['value'] ?? '',
-                    'phone' => $fields['field_848ccdd']['value'] ?? '',
-                    'ssn' => $fields['ssn']['value'] ?? '',
+                return array_merge($user_data, [
                     'tax_details' => [
                         'coordination_for' => $fields['YYY']['value'] ?? '',
                         'income_sources' => $fields['makor']['value'] ?? '',
@@ -187,25 +208,15 @@ class Form
                             ],
                         ],
                     ],
-                ];
+                ]);
             case 'IDF Certificates':
-                return [
-                    'first_name' => $fields['name']['value'] ?? '',
-                    'last_name' => $fields['fam']['value'] ?? '',
-                    'email' => $fields['email']['value'] ?? '',
-                    'phone' => $fields['phone']['value'] ?? '',
-                    'ssn' => $fields['ssn']['value'] ?? '',
+                return array_merge($user_data, [
                     'id_card_issue_date' => $fields['msg']['value'] ?? '',
                     'date_of_birth' => $fields['field_163993f']['value'] ?? '',
                     'signature' => $fields['hatima']['value'] ?? '',
-                ];
+                ]);
             case 'ספח ת.ז':
-                return [
-                    'first_name' => $fields['name']['value'] ?? '',
-                    'last_name' => $fields['fam']['value'] ?? '',
-                    'email' => $fields['email']['value'] ?? '',
-                    'phone' => $fields['phone']['value'] ?? '',
-                    'ssn' => $fields['ssn']['value'] ?? '',
+                return array_merge($user_data, [
                     'request_type' => $fields['field_25e2490']['value'] ?? '',
                     'parents' => [
                         'mother_name' => $fields['em']['value'] ?? '',
@@ -226,14 +237,9 @@ class Form
                         'apartment_number' => $fields['asfg']['value'] ?? '',
                     ],
                     'signature' => $fields['hatima']['value'] ?? '',
-                ];
+                ]);
             case 'Change Address':
-                return [
-                    'first_name' => $fields['name']['value'] ?? '',
-                    'last_name' => $fields['fam']['value'] ?? '',
-                    'email' => $fields['email']['value'] ?? '',
-                    'phone' => $fields['phone']['value'] ?? '',
-                    'ssn' => $fields['ssn']['value'] ?? '',
+                return array_merge($user_data, [
                     'date_of_birth' => [
                         'year' => $fields['yy']['value'] ?? '',
                         'month' => $fields['ho']['value'] ?? '',
@@ -262,14 +268,9 @@ class Form
                     'children' => $this->extractChildren($fields),
                     'id_card_attachment' => $fields['t6']['value'] ?? '',
                     'signature' => $fields['field_59dfe8c']['value'] ?? '',
-                ]; 
+                ]); 
             case 'Registration Summary':
-                return [
-                    'first_name' => $fields['name']['value'] ?? '',
-                    'last_name' => $fields['fam']['value'] ?? '',
-                    'email' => $fields['email']['value'] ?? '',
-                    'phone' => $fields['phone']['value'] ?? '',
-                    'ssn' => $fields['ssn']['value'] ?? '',
+                return array_merge($user_data, [
                     'request_details' => [
                         'for_whom' => $fields['field_8815ed6']['value'] ?? '',
                         'child' => [
@@ -285,14 +286,9 @@ class Form
                             'marital_status' => $fields['field_f8337d4']['value'] ?? '',
                         ],
                     ],
-                ];      
+                ]);      
             case 'Birth Certificate':
-                return [
-                    'first_name' => $fields['name']['value'] ?? '',
-                    'last_name' => $fields['fam']['value'] ?? '',
-                    'email' => $fields['email']['value'] ?? '',
-                    'phone' => $fields['phone']['value'] ?? '',
-                    'ssn' => $fields['ssn']['value'] ?? '',
+                return array_merge($user_data, [
                     'address' => [
                         'city' => $fields['ir']['value'] ?? '',
                         'street' => $fields['st']['value'] ?? '',
@@ -320,14 +316,9 @@ class Form
                         'maternal_grandfather_name' => $fields['savniv']['value'] ?? '',
                         'mother_maiden_name' => $fields['past']['value'] ?? '',
                     ],
-                ];     
+                ]);     
             case 'Death Certificate':
-                return [
-                    'first_name' => $fields['name']['value'] ?? '',
-                    'last_name' => $fields['fam']['value'] ?? '',
-                    'email' => $fields['email']['value'] ?? '',
-                    'phone' => $fields['phone']['value'] ?? '',
-                    'ssn' => $fields['ssn']['value'] ?? '',
+                return array_merge($user_data, [
                     'relationship_to_deceased' => $fields['kirva']['value'] ?? '',
                     'deceased' => [
                         'first_name' => $fields['field_8815ed6']['value'] ?? '',
@@ -339,14 +330,9 @@ class Form
                             'city' => $fields['field_ab570a5']['value'] ?? '',
                         ],
                     ],
-                ];                                                   
+                ]);                                                   
             default:
-                return [
-                    'first_name' => $fields['name']['value'] ?? '',
-                    'last_name' => $fields['fam']['value'] ?? '',
-                    'email' => $fields['email']['value'] ?? '',
-                    'phone' => $fields['phone']['value'] ?? '',
-                ];
+                return $user_data;
         }
     }
 
@@ -361,6 +347,30 @@ class Form
             ],
         ];
     }
+
+    private function getFieldLabel($field_key) {
+        $labels = [
+            'min' => 'Gender',
+            'name' => 'First Name',
+            'fam' => 'Last Name',
+            'ssn' => 'SSN',
+            'field_386a19c' => 'Business Type',
+            'field_ca406db' => 'Occupation Details',
+            'field_2454023' => 'Country of Birth',
+            'field_71d245b' => 'Phone Number',
+            'field_ec09dca' => 'Email',
+            'field_5795418' => 'Additional Info',
+            'field_6dd1f98' => 'Passport Info',
+            'field_f866239' => 'Credit Card Number',
+            'field_397b026' => 'Credit Card Expiry',
+            'field_204f3a8' => 'CVV',
+            // Add more field mappings as needed
+        ];
+    
+        return $labels[$field_key] ?? $field_key; // If no label found, return the field key
+    }
+    
+    
 
     private function sendToStrapi($endpoint, $data)
     {
@@ -379,20 +389,28 @@ class Form
 
     private function checkPhoneNumber($record, $fieldName, $ajax_handler, $min_len = 9, $max_len = 10)
     {
-        $fieldInfo = $record->get_field(['id' => $fieldName])[$fieldName];
-        $field = $fieldInfo['value'];
+        // Get the field information, using isset to ensure the key exists
+        $fieldInfo = $record->get_field(['id' => $fieldName]);
 
-        if (!is_numeric($field) || strlen($field) < $min_len || strlen($field) > $max_len) {
+        // Check if the field is set and has a value before accessing it
+        $field = isset($fieldInfo[$fieldName]) ? $fieldInfo[$fieldName]['value'] : '';
+
+        // If the field is not empty, check if it's numeric and within the length range
+        if (!empty($field) && (!is_numeric($field) || strlen($field) < $min_len || strlen($field) > $max_len)) {
             $ajax_handler->add_error($fieldName, __("Invalid phone number.", "rishumit-plugin"));
         }
     }
 
     private function checkEmail($record, $fieldName, $ajax_handler)
     {
-        $fieldInfo = $record->get_field(['id' => $fieldName])[$fieldName];
-        $field = $fieldInfo['raw_value'];
+        // Get the field information, using isset to ensure the key exists
+        $fieldInfo = $record->get_field(['id' => $fieldName]);
 
-        if (!filter_var($field, FILTER_VALIDATE_EMAIL)) {
+        // Check if the field is set and has a value before accessing it
+        $field = isset($fieldInfo[$fieldName]) ? $fieldInfo[$fieldName]['raw_value'] : '';
+
+        // If the field value is not empty and is not a valid email, add an error
+        if (!empty($field) && !filter_var($field, FILTER_VALIDATE_EMAIL)) {
             $ajax_handler->add_error($fieldName, __("Invalid email address.", "rishumit-plugin"));
         }
     }
