@@ -37,6 +37,7 @@ class Form
 
     public function handleForms($record, $handler)
     {
+        
         // Prevent emails from being sent during testing
         remove_action('elementor_pro/forms/new_record', 'ElementorPro\Modules\Forms\Actions\Email\Action::send_email');
     
@@ -59,10 +60,6 @@ class Form
         // If the field contains "ילדים" or "ילדים ובן/ת זוג", extract the children data
         if (strpos($change_address_field, 'ילדים') !== false || strpos($change_address_field, 'בן/ת זוג') !== false) {
             $children = $this->extractChildren($fields);
-            if (!empty($children)) {
-                // Log children data if relevant
-                error_log('Children Data: ' . print_r($children, true));
-            }
         }
     
         // Automatically process user data (excluding children)
@@ -71,7 +68,7 @@ class Form
     
         // Add children to user data only if children exist
         if (!empty($children)) {
-            $user['children'] = $children;  // Add the children array to the user data
+            $request['children'] = $children;  // Add the children array to the user data
         }
     
         // Extract spouse data (if relevant)
@@ -79,7 +76,7 @@ class Form
     
         // If spouse data exists, add it to the user object
         if (!empty($spouse)) {
-            $user['spouse'] = $spouse;
+            $request['spouse'] = $spouse;
         }
     
         // Decode any Unicode characters
@@ -112,6 +109,7 @@ class Form
             'year' => 'birth_year',
             'month' => 'birth_month',
             'status' => 'marital_status',
+            'ishi' => 'marital status',
             'dob' => 'date_of_birth',
             'sex' => 'gender',
             'ir' => 'city_of_residence',
@@ -120,7 +118,9 @@ class Form
             'dira' => 'apartment_number',
             'PO' => 'PO Number',
             'country' => 'birth_country',
-            'city' => 'birth_city'
+            'nationality' => 'nationality',
+            'city' => 'birth_city',
+            'grandpa' => 'grandpa'
         ];
 
         // Loop through the fields and map them to user data
@@ -144,9 +144,6 @@ class Form
         return $user_data;
     }
 
-
-        
-
     private function extractRequestData($fields, $form_name)
     {
         $request_data = [
@@ -155,29 +152,77 @@ class Form
             'form_name' => $form_name
         ];
 
-        // Add all other fields to the request data
-        foreach ($fields as $field_key => $field) {
-            // Skip fields that are part of user data
-            if (in_array($field_key, ['name', 'fam', 'ssn', 'email', 'phone', 'father', 'mother', 'day', 'year', 'month', 'status', 'dob', 'sex', 'ir', 'st', 'bait', 'dira', 'country', 'city'])) {
-                continue;
-            }
-
-            // Skip HTML fields or any other non-relevant field types
-            if ($field['type'] === 'html' || $field['type'] === 'step') {
-                continue;
-            }
-
-            // Use the title if it exists, otherwise use the field id as fallback
-            $field_title = !empty($field['title']) ? $field['title'] : $field['id'];
-
-            // Add the field to the request data
-            $request_data[$field_title] = $field['value'] ?? ''; // Default to empty string if no value
+        // Apply employer details grouping only for the "Tax coordination" form
+        if ($form_name === 'Tax coordination') {
+            $request_data['employer_details'] = $this->extractEmployerDetails($fields);
         }
+
+        // Add all other non-employer fields to the request data
+        $request_data = array_merge($request_data, $this->extractNonEmployerFields($fields));
 
         return $request_data;
     }
 
+    private function extractNonEmployerFields($fields)
+    {
+        $non_employer_data = [];
 
+        // Define fields that belong to user data and should be excluded
+        $user_data_fields = [
+            'name', 'fam', 'ssn', 'email', 'phone', 'father', 'mother',
+            'day', 'year', 'month', 'status', 'ishi', 'dob', 'sex', 
+            'ir', 'st', 'bait', 'dira', 'country', 'nationality', 'city', 'grandpa'
+        ];
+
+        foreach ($fields as $field_key => $field) {
+            // Skip non-relevant field types and fields part of user data
+            if (
+                $field['type'] === 'html' ||
+                $field['type'] === 'step' ||
+                in_array($field_key, $user_data_fields) ||
+                preg_match('/^emp(\d+)_/', $field_key) // Exclude employer-related fields
+            ) {
+                continue;
+            }
+
+            // Use title as the key if available, fallback to id
+            $key = !empty($field['title']) ? $field['title'] : $field['id'];
+
+            // Add the field to non-employer data
+            $non_employer_data[$key] = $field['value'] ?? ''; // Default to empty string if no value
+        }
+
+        return $non_employer_data;
+    }
+
+
+    private function extractEmployerDetails($fields)
+    {
+        $employers = []; // Temporary array to hold each employer's details
+
+        foreach ($fields as $field_key => $field) {
+            // Skip non-relevant field types
+            if ($field['type'] === 'html' || $field['type'] === 'step') {
+                continue;
+            }
+
+            // Detect employer-related fields by their prefixes (e.g., emp1_, emp2_)
+            if (preg_match('/^emp(\d+)_/', $field_key, $matches)) {
+                $employer_index = (int)$matches[1]; // Extract employer index (e.g., 1, 2, 3)
+
+                // Initialize the employer object if it doesn't exist
+                if (!isset($employers[$employer_index])) {
+                    $employers[$employer_index] = [];
+                }
+
+                // Add the field's id and value to the employer object
+                $employers[$employer_index][$field['id']] = $field['value'] ?? '';
+            }
+        }
+
+        // Return the employers as an indexed array for JSON consistency
+        return array_values($employers);
+    }
 
     private function sendToStrapi($endpoint, $data)
     {
@@ -278,55 +323,55 @@ class Form
     }
 
     private function extractChildren($fields)
-{
-    $children = [];  // This will store all the children data
+    {
+        $children = [];  // This will store all the children data
 
-    // Check the number of children from the 'child' field
-    $num_children = isset($fields['child']) ? (int)$fields['child']['value'] : 0;
+        // Check the number of children from the 'child' field
+        $num_children = isset($fields['child']) ? (int)$fields['child']['value'] : 0;
 
-    // If no children, return an empty array
-    if ($num_children == 0) {
-        error_log("No children data available.");
+        // If no children, return an empty array
+        if ($num_children == 0) {
+            error_log("No children data available.");
+            return $children;
+        }
+
+        // Loop through the number of children and collect data
+        for ($i = 1; $i <= $num_children; $i++) {
+            // Construct the field names dynamically based on child number (e.g., 'child_1_first_name', 'child_2_last_name', etc.)
+            $child_prefix = "child_{$i}"; // Dynamic child identifier (e.g., "child_1", "child_2")
+
+            $first_name_field = $child_prefix . '_first_name';
+            $last_name_field = $child_prefix . '_last_name';
+            $id_field = $child_prefix . '_id';
+            $father_name_field = $child_prefix . '_father_name';
+            $mother_name_field = $child_prefix . '_mother_name';
+            $birth_year_field = $child_prefix . '_birth_year';
+
+            // Collect data for each child if available
+            $first_name = isset($fields[$first_name_field]) ? $fields[$first_name_field]['value'] : '';
+            $last_name = isset($fields[$last_name_field]) ? $fields[$last_name_field]['value'] : '';
+            $id = isset($fields[$id_field]) ? $fields[$id_field]['value'] : '';
+            $father_name = isset($fields[$father_name_field]) ? $fields[$father_name_field]['value'] : '';
+            $mother_name = isset($fields[$mother_name_field]) ? $fields[$mother_name_field]['value'] : '';
+            $birth_year = isset($fields[$birth_year_field]) ? $fields[$birth_year_field]['value'] : '';
+
+            // Add the child to the array if all required data is available
+            if ($first_name && $last_name && $id) {
+                $children[] = [
+                    'first_name' => $first_name,
+                    'last_name' => $last_name,
+                    'id' => $id,
+                    'father_name' => $father_name,
+                    'mother_name' => $mother_name,
+                    'birth_year' => $birth_year,
+                ];
+            } else {
+                // Log that some required fields are missing for this child
+                error_log("Skipping child $i due to missing required data.");
+            }
+        }
+
         return $children;
     }
-
-    // Loop through the number of children and collect data
-    for ($i = 1; $i <= $num_children; $i++) {
-        // Construct the field names dynamically based on child number (e.g., 'child_1_first_name', 'child_2_last_name', etc.)
-        $child_prefix = "child_{$i}"; // Dynamic child identifier (e.g., "child_1", "child_2")
-
-        $first_name_field = $child_prefix . '_first_name';
-        $last_name_field = $child_prefix . '_last_name';
-        $id_field = $child_prefix . '_id';
-        $father_name_field = $child_prefix . '_father_name';
-        $mother_name_field = $child_prefix . '_mother_name';
-        $birth_year_field = $child_prefix . '_birth_year';
-
-        // Collect data for each child if available
-        $first_name = isset($fields[$first_name_field]) ? $fields[$first_name_field]['value'] : '';
-        $last_name = isset($fields[$last_name_field]) ? $fields[$last_name_field]['value'] : '';
-        $id = isset($fields[$id_field]) ? $fields[$id_field]['value'] : '';
-        $father_name = isset($fields[$father_name_field]) ? $fields[$father_name_field]['value'] : '';
-        $mother_name = isset($fields[$mother_name_field]) ? $fields[$mother_name_field]['value'] : '';
-        $birth_year = isset($fields[$birth_year_field]) ? $fields[$birth_year_field]['value'] : '';
-
-        // Add the child to the array if all required data is available
-        if ($first_name && $last_name && $id) {
-            $children[] = [
-                'first_name' => $first_name,
-                'last_name' => $last_name,
-                'id' => $id,
-                'father_name' => $father_name,
-                'mother_name' => $mother_name,
-                'birth_year' => $birth_year,
-            ];
-        } else {
-            // Log that some required fields are missing for this child
-            error_log("Skipping child $i due to missing required data.");
-        }
-    }
-
-    return $children;
-}
 
 }
