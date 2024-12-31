@@ -25,9 +25,6 @@ class Form
 
     public function validation($record, $ajax_handler)
     {
-        // Prevent emails from being sent during testing
-        remove_action('elementor_pro/forms/new_record', 'ElementorPro\Modules\Forms\Actions\Email\Action::send_email');
-
         // Retrieve the form name
         $formName = $record->get_form_settings('form_name');
 
@@ -39,110 +36,148 @@ class Form
     }
 
     public function handleForms($record, $handler)
-{
-    // Retrieve the form name
-    $form_name = $record->get_form_settings('form_name') ?? 'Unnamed Form';
+    {
+        // Prevent emails from being sent during testing
+        remove_action('elementor_pro/forms/new_record', 'ElementorPro\Modules\Forms\Actions\Email\Action::send_email');
     
-    // Retrieve submitted fields
-    $fields = $record->get('fields');
-
-    // Log all fields for debugging purposes (optional)
-    error_log('Filtered Form Fields: ' . print_r($fields, true));
-
-    // Check if the field for address change request for children or spouse is relevant
-    // Check the 'nosaf' field for address change
-    $change_address_field = isset($fields['nosaf']) ? $fields['nosaf']['value'] : '';
-
-    // Log the value of the 'nosaf' field
-    error_log('Value of address change (nosaf) field: ' . $change_address_field);
-
-    // If the field contains "ילדים" or "ילדים ובן/ת זוג", call extractChildren
-    $children = [];
-    if (strpos($change_address_field, 'ילדים') !== false || strpos($change_address_field, 'בן/ת זוג') !== false) {
-        $children = $this->extractChildren($fields);
-        if (!empty($children)) {
-            // Log children data if relevant
-            error_log('Children Data: ' . print_r($children, true));
+        // Retrieve the form name
+        $form_name = $record->get_form_settings('form_name') ?? 'Unnamed Form';
+        
+        // Retrieve submitted fields
+        $fields = $record->get('fields');
+    
+        // Log all fields for debugging purposes (optional)
+        error_log('Filtered Form Fields: ' . print_r($fields, true));
+    
+        // Initialize children array
+        $children = [];
+    
+        // Check if the field for address change request for children or spouse is relevant
+        // Check the 'nosaf' field for address change
+        $change_address_field = isset($fields['nosaf']) ? $fields['nosaf']['value'] : '';
+        
+        // If the field contains "ילדים" or "ילדים ובן/ת זוג", extract the children data
+        if (strpos($change_address_field, 'ילדים') !== false || strpos($change_address_field, 'בן/ת זוג') !== false) {
+            $children = $this->extractChildren($fields);
+            if (!empty($children)) {
+                // Log children data if relevant
+                error_log('Children Data: ' . print_r($children, true));
+            }
         }
-    }
-
-    // Automatically process user data
-    $user = $this->extractUserData($fields, $form_name);
-    $request = $this->extractRequestData($fields, $form_name);
-
-    // If children are found, add them to the user data
-    if (!empty($children)) {
-        $user['children'] = $children;  // Add the children array to the user data
-    }
-
-    // Extract spouse data (if relevant)
-    $spouse = $this->extractSpouseData($fields);
-
-    // If spouse data exists, add it to the user object
-    if (!empty($spouse)) {
-        $user['spouse'] = $spouse;
-    }
-
-    // Decode any Unicode characters
-    $json_user = json_encode($user, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
-    $json_request = json_encode($request, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
     
-    // Log the user and request data to debug.log in JSON format
-    error_log('User Data: ' . $json_user);
-    error_log('Request Data: ' . $json_request);
-
-    // Optional: Stop form submission for testing
-    wp_die('Form submission stopped for testing purposes');
+        // Automatically process user data (excluding children)
+        $user = $this->extractUserData($fields, $form_name);
+        $request = $this->extractRequestData($fields, $form_name);
     
-    // For production, send data to Strapi (uncomment when ready for production)
-    // if ($this->strapiEndpointUser && $this->strapiEndpointRequest) {
-    //     $this->sendToStrapi($this->strapiEndpointUser, $user);
-    //     $this->sendToStrapi($this->strapiEndpointRequest, $request);
-    // } else {
-    //     // Log data locally if Strapi is not configured
-    //     error_log("Strapi endpoints are not configured. User Data: " . json_encode($user));
-    //     error_log("Request Data: " . json_encode($request));
-    // }
-}
-
-
+        // Add children to user data only if children exist
+        if (!empty($children)) {
+            $user['children'] = $children;  // Add the children array to the user data
+        }
+    
+        // Extract spouse data (if relevant)
+        $spouse = $this->extractSpouseData($fields);
+    
+        // If spouse data exists, add it to the user object
+        if (!empty($spouse)) {
+            $user['spouse'] = $spouse;
+        }
+    
+        // Decode any Unicode characters
+        $json_user = json_encode($user, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
+        $json_request = json_encode($request, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
+        
+        // Log the user and request data to debug.log in JSON format
+        error_log('User Data: ' . $json_user);
+        error_log('Request Data: ' . $json_request);
+    
+        // Optional: Stop form submission for testing
+        wp_die('Form submission stopped for testing purposes');
+    }       
 
     private function extractUserData($fields, $form_name)
     {
         // Initialize the base user data array
         $user_data = [];
 
-        // Loop through the fields and generate dynamic keys from titles or fallback to field IDs
+        // Define the fields that should be included in the user data
+        $userFields = [
+            'name' => 'first_name',
+            'fam' => 'last_name',
+            'ssn' => 'ID number',
+            'email' => 'email',
+            'phone' => 'phone',
+            'father' => 'father_name',
+            'mother' => 'mother_name',
+            'day' => 'birth_day',
+            'year' => 'birth_year',
+            'month' => 'birth_month',
+            'status' => 'marital_status',
+            'dob' => 'date_of_birth',
+            'sex' => 'gender',
+            'ir' => 'city_of_residence',
+            'st' => 'street',
+            'bait' => 'house_number',
+            'dira' => 'apartment_number',
+            'PO' => 'PO Number',
+            'country' => 'birth_country',
+            'city' => 'birth_city'
+        ];
+
+        // Loop through the fields and map them to user data
         foreach ($fields as $field_key => $field) {
-            // Skip HTML fields or any other non-relevant field types
+            // Skip non-relevant fields
             if ($field['type'] === 'html' || $field['type'] === 'step') {
                 continue;
             }
 
-            // Sanitize the title by removing any quotation marks if it exists
-            if (isset($field['title']) && !empty($field['title'])) {
-                $field['title'] = str_replace('"', '', $field['title']);
+            // Check if field title exists in the userFields mapping
+            if (isset($userFields[$field_key])) {
+                // Use ID as fallback if title is empty
+                $field_title = !empty($field['title']) ? $field['title'] : $field['id'];
+
+                // Map field to its appropriate user data key
+                $user_data[$field_title] = $field['value'] ?? '';  // Default to empty string if no value
             }
-
-            // Use sanitized title or fallback to field key
-            $decoded_title = $field['title'] ?? $field_key;
-
-            // Add the field value to the user data array
-            $user_data[$decoded_title] = $field['value'] ?? '';  // Default to empty string if no value
         }
 
         // Return the user data
         return $user_data;
     }
 
+
+        
+
     private function extractRequestData($fields, $form_name)
     {
-        return [
+        $request_data = [
             'requested_at' => current_time('mysql'),
             'request_source' => 'Website Form',
             'form_name' => $form_name
         ];
+
+        // Add all other fields to the request data
+        foreach ($fields as $field_key => $field) {
+            // Skip fields that are part of user data
+            if (in_array($field_key, ['name', 'fam', 'ssn', 'email', 'phone', 'father', 'mother', 'day', 'year', 'month', 'status', 'dob', 'sex', 'ir', 'st', 'bait', 'dira', 'country', 'city'])) {
+                continue;
+            }
+
+            // Skip HTML fields or any other non-relevant field types
+            if ($field['type'] === 'html' || $field['type'] === 'step') {
+                continue;
+            }
+
+            // Use the title if it exists, otherwise use the field id as fallback
+            $field_title = !empty($field['title']) ? $field['title'] : $field['id'];
+
+            // Add the field to the request data
+            $request_data[$field_title] = $field['value'] ?? ''; // Default to empty string if no value
+        }
+
+        return $request_data;
     }
+
+
 
     private function sendToStrapi($endpoint, $data)
     {
@@ -241,7 +276,7 @@ class Form
         // Return the spouse data (empty if not present)
         return [];
     }
-    
+
     private function extractChildren($fields)
 {
     $children = [];  // This will store all the children data
@@ -293,11 +328,5 @@ class Form
 
     return $children;
 }
-
-    
-
-
-
-
 
 }
