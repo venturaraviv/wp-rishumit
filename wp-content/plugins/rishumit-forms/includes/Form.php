@@ -15,8 +15,6 @@ class Form
 
    public function __construct()
    {
-       // Strapi endpoints
-       // $this->strapiEndpointUser = getenv('STRAPI_ENDPOINT_USER');
        $this->strapiEndpointRequest = defined('STRAPI_ENDPOINT_REQUEST')
        ? STRAPI_ENDPOINT_REQUEST
        : 'http://localhost:1337/api/requests'; // Fallback for local development
@@ -32,115 +30,109 @@ class Form
 
 
    public function validation($record, $ajax_handler)
-   {
-       // Retrieve the form name
-       $formName = $record->get_form_settings('form_name');
+{
+    // 1. Check if record and ajax_handler exist
+    if (!$record || !$ajax_handler) {
+        error_log('Invalid form record or ajax handler');
+        return;
+    }
 
+    // 2. Get form settings with error checking
+    $formName = $record->get_form_settings('form_name') ?? 'Unknown Form';
+    if (!$form_settings) {
+        error_log('Could not get form settings');
+        return;
+    }
 
-       // Perform validation logic
-       $this->checkEmail($record, 'email', $ajax_handler);
-       $this->checkName($record, 'first_name', $ajax_handler, 2, 40);
-       $this->checkName($record, 'last_name', $ajax_handler, 2, 40);
-       $this->checkPhoneNumber($record, 'phone', $ajax_handler);
-   }
+    // 3. Use null coalescing operator to provide fallback
+    $formName = $form_settings['form_name'] ?? 'Unknown Form';
+
+    // Existing validation calls remain the same
+    $this->checkEmail($record, 'email', $ajax_handler);
+    $this->checkName($record, 'first_name', $ajax_handler, 2, 40);
+    $this->checkName($record, 'last_name', $ajax_handler, 2, 40);
+    $this->checkPhoneNumber($record, 'phone', $ajax_handler);
+}
 
 
    public function handleForms($record, $handler)
-   {
-      
-       // Prevent emails from being sent during testing
-       remove_action('elementor_pro/forms/new_record', 'ElementorPro\Modules\Forms\Actions\Email\Action::send_email');
-  
-       // Retrieve the form name
-       $form_name = $record->get_form_settings('form_name') ?? 'Unnamed Form';
-      
-       // Retrieve submitted fields
-       $fields = $record->get('fields');
+{
+    // Retrieve the form name
+    $form_name = $record->get_form_settings('form_name') ?? 'Unnamed Form';
+    
+    // Retrieve submitted fields
+    $fields = $record->get('fields');
 
+    // Log all fields for debugging purposes (optional)
+    error_log('Filtered Form Fields: ' . print_r($fields, true));
 
-       // Prepare data for background processing
-       $submission_data = [
-           'fields' => $fields,
-           'form_name' => $form_name
-       ];
+    // Initialize children array
+    $children = [];
 
+    // Check the 'nosaf' field for address change
+    $change_address_field = isset($fields['nosaf']) ? $fields['nosaf']['value'] : '';
+    
+    if (strpos($change_address_field, 'ילדים') !== false || strpos($change_address_field, 'בן/ת זוג') !== false) {
+        $children = $this->extractChildren($fields);
+    }
 
-       // Immediately show success to the user
-       $handler->add_response_data('message', __('Form submitted successfully. We will process your request shortly.', 'rishumit-plugin'));
+    // Extract user, request, and spouse data
+    $user = $this->extractUserData($fields, $form_name);
+    $request = $this->extractRequestData($fields, $form_name);
 
+    if (!empty($children)) {
+        $request['children'] = $children;
+    }
 
-       // Schedule the task (runs within 1 minute)
-       wp_schedule_single_event(time() + 60, 'rishumit_process_form_submission', [$submission_data]);
-  
-       // Log all fields for debugging purposes (optional)
-       error_log('Filtered Form Fields: ' . print_r($fields, true));
-  
-       // Initialize children array
-       $children = [];
-  
-       // Check if the field for address change request for children or spouse is relevant
-       // Check the 'nosaf' field for address change
-       $change_address_field = isset($fields['nosaf']) ? $fields['nosaf']['value'] : '';
-      
-       // If the field contains "ילדים" or "ילדים ובן/ת זוג", extract the children data
-       if (strpos($change_address_field, 'ילדים') !== false || strpos($change_address_field, 'בן/ת זוג') !== false) {
-           $children = $this->extractChildren($fields);
-       }
-  
-       // Automatically process user data (excluding children)
-       $user = $this->extractUserData($fields, $form_name);
-       $request = $this->extractRequestData($fields, $form_name);
+    $spouse = $this->extractSpouseData($fields);
+    if (!empty($spouse)) {
+        $request['spouse'] = $spouse;
+    }
 
+    // Filter out empty fields while keeping numerical zeros
+    $request = array_filter($this->extractRequestData($fields, $form_name), function ($value) {
+        return !empty($value) || $value === 0 || $value === "0";
+    });
 
-       // Append created_by with user email
-       $user_email = $fields['email']['value'] ?? '';  // Retrieve user's email
-       $request['created_by_client_id'] = $user_email;           // Append it to the request object
-  
-       // Add children to user data only if children exist
-       if (!empty($children)) {
-           $request['children'] = $children;  // Add the children array to the user data
-       }
-  
-       // Extract spouse data (if relevant)
-       $spouse = $this->extractSpouseData($fields);
-       if (!empty($spouse)) {
-           $request['spouse'] = $spouse;
-       }
+    // Append created_by with user email
+    $user_email = $fields['email']['value'] ?? '';
+    $request['created_by_client_id'] = $user_email;
 
+    // Rename 'חתימת המבקש/ת' to 'חתימה'
+    foreach ($request as $key => $value) {
+        if (preg_match('/חתימת המבקש.*:/u', $key)) {
+            $request['חתימה'] = $value;
+            unset($request[$key]);
+        }
+    }
 
-       // Rename 'חתימת המבקש/ת' to 'חתימה' in the request object dynamically
-       foreach ($request as $key => $value) {
-           if (preg_match('/חתימת המבקש.*:/u', $key)) {  // Match keys like 'חתימת המבקש/ת:' or similar
-               $request['חתימה'] = $value;  // Create the new key with the same value
-               unset($request[$key]);        // Remove the old key
-           }
-       }
+    // Wrap request data inside request_json
+    $payload = [
+        'data' => [
+            'user' => $user,
+            'request_json' => $request,
+        ]
+    ];
 
+    // Log request data
+    error_log('User Data: ' . json_encode($user, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
+    error_log('Filtered Request Data: ' . json_encode($request, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
 
-       // Wrap request data inside request_json
-       $payload = [
-           'data' => [
-               'user' => $user,
-               'request_json' => $request,  // Wrap request object inside request_json
-           ]
-       ];
-  
-       // Decode any Unicode characters
-       $json_user = json_encode($user, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
-       $json_request = json_encode($request, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
-      
-       // Log the user and request data to debug.log in JSON format
-       error_log('User Data: ' . $json_user);
-       error_log('Request Data: ' . $json_request);       
-      
-       // Send the combined payload to Strapi
-       $this->sendToStrapi($this->strapiEndpointRequest, $payload);
-      
+    // Send to Strapi and get response
+    $strapi_response = $this->sendToStrapi($this->strapiEndpointRequest, $payload);
 
+    if (!$strapi_response['success']) {
+        // Stop form submission and show error message if Strapi failed
+        $handler->add_error_message(__('Submission failed: ' . $strapi_response['message'], 'rishumit-plugin'));
+        return;
+    }
 
-       // Optional: Stop form submission for testing
-       wp_die('Form submission stopped for testing purposes');
-   }      
+    // Schedule the task (runs within 1 minute)
+    // wp_schedule_single_event(time() + 60, 'rishumit_process_form_submission', [$fields]);
+
+    $handler->add_response_data('message', __('Form submitted successfully. We will process your request shortly.', 'rishumit-plugin'));
+    
+}
 
 
    private function extractUserData($fields, $form_name)
@@ -192,7 +184,7 @@ class Form
 
 
                // Map field to its appropriate user data key
-               $user_data[$field_title] = $field['value'] ?? '';  // Default to empty string if no value
+               $user_data[$field_title] = isset($field['value']) ? strval($field['value']) : '';   // Default to empty string if no value
            }
        }
 
@@ -300,22 +292,42 @@ class Form
 
 
    private function sendToStrapi($endpoint, $data)
-   {
-       $response = wp_remote_post($endpoint, [
-           'method'  => 'POST',
-           'headers' => [
-               'Content-Type' => 'application/json',
-               'Authorization' => 'Bearer 479e3212fb5013aa56e0ca849364a719c02516eb7ed9ac4670729a8bae2c7b8c0005c1c6d7e775f8b60ea66942ea74f8113a5fc4e367d2add23df62e44cc716bc5b7f6eaf91c96e4fcd5da5aa92424b1c241093cc5365153fd6aa8f05c320b47382329f4087aec412df04e414cd4cdcc7fd63c83a9f092de1cbaf0cc7dbaa1df'
-           ],
-           'body'    => json_encode($data),
-       ]);
+{
 
-       if (is_wp_error($response)) {
-           error_log('Error sending to Strapi: ' . $response->get_error_message());
-       } else {
-           error_log('Response from Strapi: ' . wp_remote_retrieve_body($response));
-       }
-   }
+    $response = wp_remote_post($endpoint, [
+        'method'  => 'POST',
+        'headers' => [
+            'Content-Type'  => 'application/json',
+            'Authorization' => 'Bearer 479e3212fb5013aa56e0ca849364a719c02516eb7ed9ac4670729a8bae2c7b8c0005c1c6d7e775f8b60ea66942ea74f8113a5fc4e367d2add23df62e44cc716bc5b7f6eaf91c96e4fcd5da5aa92424b1c241093cc5365153fd6aa8f05c320b47382329f4087aec412df04e414cd4cdcc7fd63c83a9f092de1cbaf0cc7dbaa1df',
+            'Referer' => 'https://rishumit.local'
+        ],
+        'body'    => json_encode($data),
+        'timeout' => 5
+    ]);
+
+    if (is_wp_error($response)) {
+        $error_message = $response->get_error_message();
+        error_log('Error sending to Strapi: ' . $error_message);
+        return ['success' => false, 'message' => 'Strapi unavailable'];
+    }
+
+    $response_code = wp_remote_retrieve_response_code($response);
+    $response_body = wp_remote_retrieve_body($response);
+
+    // Log the response status
+    error_log("Strapi response code: $response_code");
+    error_log("Strapi response body: $response_body");
+
+    // Ensure Strapi returns valid JSON
+    $decoded_response = json_decode($response_body, true);
+    if (json_last_error() !== JSON_ERROR_NONE) {
+        error_log("Invalid JSON from Strapi: " . json_last_error_msg());
+        return ['success' => false, 'message' => 'Invalid Strapi response'];
+    }
+
+    return ['success' => true, 'message' => 'Form submitted successfully.'];
+}
+
 
    private function checkPhoneNumber($record, $fieldName, $ajax_handler, $min_len = 9, $max_len = 10)
    {
