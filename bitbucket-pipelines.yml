@@ -8,4 +8,4 @@ pipelines:
           script:
             - echo "Starting deployment to WP Engine STG"
             - ssh-keyscan git.wpengine.com >> ~/.ssh/known_hosts
-            - git push --force git@git.wpengine.com:rishumitstg.git staging:master
+            - git push --force git@git.wpengine.com:rishumitstg.git staging:master 
