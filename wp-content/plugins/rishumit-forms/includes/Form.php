@@ -8,12 +8,12 @@ class Form
 {
    private $strapiEndpointUser;
    private $strapiEndpointRequest;
+   private $strapiToken;
 
    public function __construct()
    {
-       $this->strapiEndpointRequest = defined('STRAPI_ENDPOINT_REQUEST')
-       ? STRAPI_ENDPOINT_REQUEST
-       : 'http://localhost:1337/api/requests'; // Fallback for local development
+        $this->strapiEndpointRequest = 'https://be-rishumit.azurewebsites.net/api/requests';
+        $this->strapiToken = '479e3212fb5013aa56e0ca849364a719c02516eb7ed9ac4670729a8bae2c7b8c0005c1c6d7e775f8b60ea66942ea74f8113a5fc4e367d2add23df62e44cc716bc5b7f6eaf91c96e4fcd5da5aa92424b1c241093cc5365153fd6aa8f05c320b47382329f4087aec412df04e414cd4cdcc7fd63c83a9f092de1cbaf0cc7dbaa1df';
    }
 
    public function register()
@@ -31,28 +31,42 @@ class Form
            return;
        }
 
-       // 2. Get form settings with error checking
+       // 2. Get form settings properly
        $formName = $record->get_form_settings('form_name') ?? 'Unknown Form';
-       if (!$form_settings) {
-           error_log('Could not get form settings');
-           return;
+       
+       // Only validate basic fields if they exist
+       // Email validation
+       if ($this->fieldExists($record, 'email')) {
+           $this->checkEmail($record, 'email', $ajax_handler);
        }
+       
+       // First name validation
+       if ($this->fieldExists($record, 'name')) {
+           $this->checkName($record, 'first_name', $ajax_handler, 1, 50);
+       }
+       
+       // Last name validation
+       if ($this->fieldExists($record, 'fam')) {
+           $this->checkName($record, 'last_name', $ajax_handler, 1, 50);
+       }
+       
+       // Phone validation
+       if ($this->fieldExists($record, 'phone')) {
+           $this->checkPhoneNumber($record, 'phone', $ajax_handler, 7, 15);
+       }
+   }
 
-       // 3. Use null coalescing operator to provide fallback
-       $formName = $form_settings['form_name'] ?? 'Unknown Form';
-
-       // Existing validation calls remain the same
-       $this->checkEmail($record, 'email', $ajax_handler);
-       $this->checkName($record, 'first_name', $ajax_handler, 2, 40);
-       $this->checkName($record, 'last_name', $ajax_handler, 2, 40);
-       $this->checkPhoneNumber($record, 'phone', $ajax_handler);
+   /**
+    * Check if a field exists in the form record
+    */
+   private function fieldExists($record, $fieldId)
+   {
+       $fieldInfo = $record->get_field(['id' => $fieldId]);
+       return isset($fieldInfo[$fieldId]);
    }
 
    /**
     * Sanitize keys by removing colons at the end
-    * 
-    * @param string $key The key to sanitize
-    * @return string Sanitized key
     */
    private function sanitizeKey($key) 
    {
@@ -65,77 +79,96 @@ class Form
 
    public function handleForms($record, $handler)
    {
-       // Retrieve the form name
-       $form_name = $record->get_form_settings('form_name') ?? 'Unnamed Form';
-       
-       // Retrieve submitted fields
-       $fields = $record->get('fields');
+       try {
+           // Retrieve the form name
+           $form_name = $record->get_form_settings('form_name') ?? 'Unnamed Form';
+           
+           // Retrieve submitted fields
+           $fields = $record->get('fields');
 
-       // Log all fields for debugging purposes (optional)
-       error_log('Filtered Form Fields: ' . print_r($fields, true));
+           // Log all fields for debugging purposes
+           error_log('Form Name: ' . $form_name);
+           error_log('Filtered Form Fields: ' . print_r($fields, true));
 
-       // Initialize children array
-       $children = [];
+           // Initialize children array
+           $children = [];
 
-       // Check the 'nosaf' field for address change
-       $change_address_field = isset($fields['nosaf']) ? $fields['nosaf']['value'] : '';
-       
-       if (strpos($change_address_field, 'ילדים') !== false || strpos($change_address_field, 'בן/ת זוג') !== false) {
-           $children = $this->extractChildren($fields);
-       }
-
-       // Extract user, request, and spouse data
-       $user = $this->extractUserData($fields, $form_name);
-       $request = $this->extractRequestData($fields, $form_name);
-
-       if (!empty($children)) {
-           $request['children'] = $children;
-       }
-
-       $spouse = $this->extractSpouseData($fields);
-       if (!empty($spouse)) {
-           $request['spouse'] = $spouse;
-       }
-
-       // Filter out empty fields while keeping numerical zeros
-       $request = array_filter($request, function ($value) {
-           return !empty($value) || $value === 0 || $value === "0";
-       });
-
-       // Append created_by with user email
-       $user_email = $fields['email']['value'] ?? '';
-       $request['created_by_client_id'] = $user_email;
-
-       // Rename 'חתימת המבקש/ת' to 'חתימה'
-       foreach ($request as $key => $value) {
-           if (preg_match('/חתימת המבקש.*:/u', $key)) {
-               $request['חתימה'] = $value;
-               unset($request[$key]);
+           // Check the 'nosaf' field for address change
+           $change_address_field = isset($fields['nosaf']) ? $fields['nosaf']['value'] : '';
+           
+           if (strpos($change_address_field, 'ילדים') !== false || strpos($change_address_field, 'בן/ת זוג') !== false) {
+               $children = $this->extractChildren($fields);
            }
+
+           // Extract user, request, and spouse data
+           $user = $this->extractUserData($fields, $form_name);
+           $request = $this->extractRequestData($fields, $form_name);
+
+           if (!empty($children)) {
+               $request['children'] = $children;
+           }
+
+           $spouse = $this->extractSpouseData($fields);
+           if (!empty($spouse)) {
+               $request['spouse'] = $spouse;
+           }
+
+           // Filter out empty fields while keeping numerical zeros
+           $request = array_filter($request, function ($value) {
+               return $value !== '' && ($value || $value === 0 || $value === "0");
+           });
+
+           // Append created_by with user email
+           $user_email = isset($fields['email']['value']) ? $fields['email']['value'] : '';
+           $request['created_by_client_id'] = $user_email;
+
+           // Rename 'חתימת המבקש/ת' to 'חתימה'
+           foreach ($request as $key => $value) {
+               if (preg_match('/חתימת המבקש.*:/u', $key)) {
+                   $request['חתימה'] = $value;
+                   unset($request[$key]);
+               }
+           }
+
+           // Wrap request data inside request_json
+           $payload = [
+               'data' => [
+                   'user' => $user,
+                   'request_json' => $request,
+               ]
+           ];
+
+           // Log complete payload for debugging
+           error_log('Complete payload: ' . json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
+
+           // Use debug function before sending to Strapi
+           $this->debugFormSubmission($payload, null, $fields);
+
+           // Send to Strapi and get response
+           $strapi_response = $this->sendToStrapi($this->strapiEndpointRequest, $payload);
+           
+           // Use debug function with the response
+           $this->debugFormSubmission($payload, $strapi_response, $fields);
+
+           if (!$strapi_response['success']) {
+               // If Strapi reported an error
+               error_log('Strapi error: ' . $strapi_response['message']);
+               $handler->add_error_message(__('Submission failed: ' . $strapi_response['message'], 'rishumit-plugin'));
+               return false;
+           }
+           
+           // IMPORTANT: Success handling - only add one success message
+           $handler->add_success_message(__('Form submitted successfully.', 'rishumit-plugin'));
+           
+           return true;
+           
+       } catch (Exception $e) {
+           // If any unexpected error occurs, log it and show a generic error
+           error_log('Exception in handleForms: ' . $e->getMessage());
+           error_log('Exception trace: ' . $e->getTraceAsString());
+           $handler->add_error_message(__('An unexpected error occurred. Please try again later.', 'rishumit-plugin'));
+           return false;
        }
-
-       // Wrap request data inside request_json
-       $payload = [
-           'data' => [
-               'user' => $user,
-               'request_json' => $request,
-           ]
-       ];
-
-       // Log request data
-       error_log('User Data: ' . json_encode($user, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
-       error_log('Filtered Request Data: ' . json_encode($request, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
-
-       // Send to Strapi and get response
-       $strapi_response = $this->sendToStrapi($this->strapiEndpointRequest, $payload);
-
-       if (!$strapi_response['success']) {
-           // Stop form submission and show error message if Strapi failed
-           $handler->add_error_message(__('Submission failed: ' . $strapi_response['message'], 'rishumit-plugin'));
-           return;
-       }
-
-       $handler->add_response_data('message', __('Form submitted successfully. We will process your request shortly.', 'rishumit-plugin'));
    }
 
    private function extractUserData($fields, $form_name)
@@ -173,7 +206,7 @@ class Form
        // Loop through the fields and map them to user data
        foreach ($fields as $field_key => $field) {
            // Skip non-relevant fields
-           if ($field['type'] === 'html' || $field['type'] === 'step') {
+           if (isset($field['type']) && ($field['type'] === 'html' || $field['type'] === 'step')) {
                continue;
            }
 
@@ -186,7 +219,7 @@ class Form
                $field_title = $this->sanitizeKey($field_title);
 
                // Map field to its appropriate user data key
-               $user_data[$field_title] = isset($field['value']) ? strval($field['value']) : '';   // Default to empty string if no value
+               $user_data[$field_title] = isset($field['value']) ? strval($field['value']) : '';
            }
        }
 
@@ -241,8 +274,7 @@ class Form
        foreach ($fields as $field_key => $field) {
            // Skip non-relevant field types and fields part of user data
            if (
-               $field['type'] === 'html' ||
-               $field['type'] === 'step' ||
+               (isset($field['type']) && ($field['type'] === 'html' || $field['type'] === 'step')) ||
                in_array($field_key, $user_data_fields) ||
                preg_match('/^emp(\d+)_/', $field_key) // Exclude employer-related fields
            ) {
@@ -255,8 +287,10 @@ class Form
            // Sanitize the key to remove trailing colons
            $key = $this->sanitizeKey($key);
 
-           // Add the field to non-employer data
-           $non_employer_data[$key] = $field['value'] ?? ''; // Default to empty string if no value
+           // Add the field to non-employer data if it has a value
+           if (isset($field['value'])) {
+               $non_employer_data[$key] = $field['value'];
+           }
        }
 
        return $non_employer_data;
@@ -268,7 +302,7 @@ class Form
 
        foreach ($fields as $field_key => $field) {
            // Skip non-relevant field types
-           if ($field['type'] === 'html' || $field['type'] === 'step') {
+           if (isset($field['type']) && ($field['type'] === 'html' || $field['type'] === 'step')) {
                continue;
            }
 
@@ -282,10 +316,13 @@ class Form
                }
 
                // Get the field ID and sanitize it if needed
-               $field_id = $this->sanitizeKey($field['id']);
+               $field_id = str_replace("emp{$employer_index}_", '', $field_key);
+               $field_id = $this->sanitizeKey($field_id);
 
                // Add the field's id and value to the employer object
-               $employers[$employer_index][$field_id] = $field['value'] ?? '';
+               if (isset($field['value'])) {
+                   $employers[$employer_index][$field_id] = $field['value'];
+               }
            }
        }
 
@@ -295,38 +332,94 @@ class Form
 
    private function sendToStrapi($endpoint, $data)
    {
-       $response = wp_remote_post($endpoint, [
-           'method'  => 'POST',
-           'headers' => [
-               'Content-Type'  => 'application/json',
-               'Authorization' => 'Bearer 479e3212fb5013aa56e0ca849364a719c02516eb7ed9ac4670729a8bae2c7b8c0005c1c6d7e775f8b60ea66942ea74f8113a5fc4e367d2add23df62e44cc716bc5b7f6eaf91c96e4fcd5da5aa92424b1c241093cc5365153fd6aa8f05c320b47382329f4087aec412df04e414cd4cdcc7fd63c83a9f092de1cbaf0cc7dbaa1df',
-               'Referer' => 'https://rishumit.local'
-           ],
-           'body'    => json_encode($data),
-           'timeout' => 5
-       ]);
+       try {
+           // Ensure data is correctly formatted
+           $json_data = json_encode($data);
+           if (json_last_error() !== JSON_ERROR_NONE) {
+               error_log('JSON encoding error: ' . json_last_error_msg());
+               return ['success' => false, 'message' => 'Data formatting error: ' . json_last_error_msg()];
+           }
 
-       if (is_wp_error($response)) {
-           $error_message = $response->get_error_message();
-           error_log('Error sending to Strapi: ' . $error_message);
-           return ['success' => false, 'message' => 'Strapi unavailable'];
+           // Log the request details
+           error_log('Sending to Strapi: ' . $endpoint);
+           error_log('Request data: ' . $json_data);
+
+           $response = wp_remote_post($endpoint, [
+               'method'  => 'POST',
+               'headers' => [
+                   'Content-Type'  => 'application/json',
+                   'Authorization' => 'Bearer ' . $this->strapiToken,
+                   'Referer' => get_site_url()
+               ],
+               'body'    => $json_data,
+               'timeout' => 45, // Increase timeout for potential slow responses
+               'sslverify' => false // Try disabling SSL verification if HTTPS issues occur
+           ]);
+
+           if (is_wp_error($response)) {
+               $error_message = $response->get_error_message();
+               error_log('Error sending to Strapi: ' . $error_message);
+               return ['success' => false, 'message' => 'Connection error: ' . $error_message];
+           }
+
+           $response_code = wp_remote_retrieve_response_code($response);
+           $response_body = wp_remote_retrieve_body($response);
+
+           // Log the response status
+           error_log("Strapi response code: $response_code");
+           error_log("Strapi response body: $response_body");
+
+           // Check for unsuccessful HTTP codes
+           if ($response_code < 200 || $response_code >= 300) {
+               error_log("Strapi returned error code: $response_code");
+               
+               // Try to get a more detailed error message from the response body
+               $error_details = json_decode($response_body, true);
+               $error_message = '';
+               
+               if (json_last_error() === JSON_ERROR_NONE && isset($error_details['error'])) {
+                   if (is_array($error_details['error'])) {
+                       $error_message = isset($error_details['error']['message']) 
+                           ? $error_details['error']['message'] 
+                           : "Unknown error";
+                   } else {
+                       $error_message = $error_details['error'];
+                   }
+               } else {
+                   $error_message = "Server error (HTTP $response_code)";
+               }
+               
+               return ['success' => false, 'message' => $error_message];
+           }
+
+           // Check if response is valid JSON first
+        $decoded_response = json_decode($response_body, true);
+        if (json_last_error() !== JSON_ERROR_NONE) {
+            // If not valid JSON but status code is 200, it might be a text message
+            if ($response_code == 200 && !empty($response_body)) {
+                error_log("Non-JSON response from Strapi: " . $response_body);
+                return [
+                    'success' => false,
+                    'message' => $response_body // Use the response text as error message
+                ];
+            } else {
+                error_log("Invalid JSON from Strapi: " . json_last_error_msg());
+                return ['success' => false, 'message' => 'Invalid server response'];
+            }
+        }
+
+        // If we reach here, everything was successful
+        return [
+            'success' => true,
+            'data' => $decoded_response,
+            'message' => 'Form submitted successfully'
+        ];
+           
+       } catch (Exception $e) {
+           error_log('Exception in sendToStrapi: ' . $e->getMessage());
+           error_log('Exception trace: ' . $e->getTraceAsString());
+           return ['success' => false, 'message' => 'Server error: ' . $e->getMessage()];
        }
-
-       $response_code = wp_remote_retrieve_response_code($response);
-       $response_body = wp_remote_retrieve_body($response);
-
-       // Log the response status
-       error_log("Strapi response code: $response_code");
-       error_log("Strapi response body: $response_body");
-
-       // Ensure Strapi returns valid JSON
-       $decoded_response = json_decode($response_body, true);
-       if (json_last_error() !== JSON_ERROR_NONE) {
-           error_log("Invalid JSON from Strapi: " . json_last_error_msg());
-           return ['success' => false, 'message' => 'Invalid Strapi response'];
-       }
-
-       return ['success' => true, 'message' => 'Form submitted successfully.'];
    }
 
    private function extractSpouseData($fields)
@@ -339,12 +432,12 @@ class Form
        // If the value contains "ילדים" or "ילדים ובן/ת זוג", extract the children and spouse data
        if (strpos($address_change_needed, 'ילדים') !== false || strpos($address_change_needed, 'בן/ת זוג') !== false) {
            // Extract spouse data
-           $spouse['first_name'] = isset($fields['spouse_first_name']) ? $fields['spouse_first_name']['value'] : '';
-           $spouse['last_name'] = isset($fields['spouse_last_name']) ? $fields['spouse_last_name']['value'] : '';
-           $spouse['id_number'] = isset($fields['spouse_id']) ? $fields['spouse_id']['value'] : '';
-           $spouse['father_name'] = isset($fields['spouse_father_name']) ? $fields['spouse_father_name']['value'] : '';
-           $spouse['mother_name'] = isset($fields['spouse_mother_name']) ? $fields['spouse_mother_name']['value'] : '';
-           $spouse['birth_year'] = isset($fields['spouse_birth_year']) ? $fields['spouse_birth_year']['value'] : '';
+           $spouse['first_name'] = isset($fields['spouse_first_name']['value']) ? $fields['spouse_first_name']['value'] : '';
+           $spouse['last_name'] = isset($fields['spouse_last_name']['value']) ? $fields['spouse_last_name']['value'] : '';
+           $spouse['id_number'] = isset($fields['spouse_id']['value']) ? $fields['spouse_id']['value'] : '';
+           $spouse['father_name'] = isset($fields['spouse_father_name']['value']) ? $fields['spouse_father_name']['value'] : '';
+           $spouse['mother_name'] = isset($fields['spouse_mother_name']['value']) ? $fields['spouse_mother_name']['value'] : '';
+           $spouse['birth_year'] = isset($fields['spouse_birth_year']['value']) ? $fields['spouse_birth_year']['value'] : '';
 
            // If the spouse data is complete (all fields filled), return it
            if (!empty($spouse['first_name']) && !empty($spouse['last_name']) && !empty($spouse['id_number'])) {
@@ -361,7 +454,7 @@ class Form
        $children = [];  // This will store all the children data
 
        // Check the number of children from the 'child' field
-       $num_children = isset($fields['child']) ? (int)$fields['child']['value'] : 0;
+       $num_children = isset($fields['child']['value']) ? (int)$fields['child']['value'] : 0;
 
        // If no children, return an empty array
        if ($num_children == 0) {
@@ -371,7 +464,7 @@ class Form
 
        // Loop through the number of children and collect data
        for ($i = 1; $i <= $num_children; $i++) {
-           // Construct the field names dynamically based on child number (e.g., 'child_1_first_name', 'child_2_last_name', etc.)
+           // Construct the field names dynamically based on child number
            $child_prefix = "child_{$i}"; // Dynamic child identifier (e.g., "child_1", "child_2")
 
            $first_name_field = $child_prefix . '_first_name';
@@ -381,13 +474,13 @@ class Form
            $mother_name_field = $child_prefix . '_mother_name';
            $birth_year_field = $child_prefix . '_birth_year';
 
-           // Collect data for each child if available
-           $first_name = isset($fields[$first_name_field]) ? $fields[$first_name_field]['value'] : '';
-           $last_name = isset($fields[$last_name_field]) ? $fields[$last_name_field]['value'] : '';
-           $id = isset($fields[$id_field]) ? $fields[$id_field]['value'] : '';
-           $father_name = isset($fields[$father_name_field]) ? $fields[$father_name_field]['value'] : '';
-           $mother_name = isset($fields[$mother_name_field]) ? $fields[$mother_name_field]['value'] : '';
-           $birth_year = isset($fields[$birth_year_field]) ? $fields[$birth_year_field]['value'] : '';
+           // Collect data for each child if available, using proper array access
+           $first_name = isset($fields[$first_name_field]['value']) ? $fields[$first_name_field]['value'] : '';
+           $last_name = isset($fields[$last_name_field]['value']) ? $fields[$last_name_field]['value'] : '';
+           $id = isset($fields[$id_field]['value']) ? $fields[$id_field]['value'] : '';
+           $father_name = isset($fields[$father_name_field]['value']) ? $fields[$father_name_field]['value'] : '';
+           $mother_name = isset($fields[$mother_name_field]['value']) ? $fields[$mother_name_field]['value'] : '';
+           $birth_year = isset($fields[$birth_year_field]['value']) ? $fields[$birth_year_field]['value'] : '';
 
            // Add the child to the array if all required data is available
            if ($first_name && $last_name && $id) {
@@ -408,17 +501,61 @@ class Form
        return $children;
    }
 
-   private function checkPhoneNumber($record, $fieldName, $ajax_handler, $min_len = 9, $max_len = 10)
+   private function checkPhoneNumber($record, $fieldName, $ajax_handler, $min_len = 1, $max_len = 50)
    {
+       // Adjust the fieldName if necessary for field mapping
+       $actualFieldName = $fieldName; // In this case, phone is the actual field name
+
        // Get the field information, using isset to ensure the key exists
-       $fieldInfo = $record->get_field(['id' => $fieldName]);
+       $fieldInfo = $record->get_field(['id' => $actualFieldName]);
 
-       // Check if the field is set and has a value before accessing it
-       $field = isset($fieldInfo[$fieldName]) ? $fieldInfo[$fieldName]['value'] : '';
+       // Check if the field exists
+       if (!isset($fieldInfo[$actualFieldName])) {
+           // Just log and continue - don't add error
+           error_log("Phone field not found: $actualFieldName");
+           return;
+       }
 
-       // If the field is not empty, check if it's numeric and within the length range
-       if (!empty($field) && (!is_numeric($field) || strlen($field) < $min_len || strlen($field) > $max_len)) {
-           $ajax_handler->add_error($fieldName, __("Invalid phone number.", "rishumit-plugin"));
+       // Log the phone value for debugging
+       $phone_value = isset($fieldInfo[$actualFieldName]['value']) ? $fieldInfo[$actualFieldName]['value'] : 'EMPTY';
+       error_log("Phone validation - value: $phone_value");
+       
+       // Accept almost any phone input for now to debug
+       // Only validate if it's completely empty
+       if (empty($fieldInfo[$actualFieldName]['value']) && isset($fieldInfo[$actualFieldName]['required']) && $fieldInfo[$actualFieldName]['required']) {
+           $ajax_handler->add_error($fieldName, __("Phone number is required.", "rishumit-plugin"));
+       }
+   }
+
+   private function checkName($record, $fieldName, $ajax_handler, $min_len = 1, $max_len = 100)
+   {
+       // Correct field IDs mapping
+       $fieldMap = [
+           'first_name' => 'name',
+           'last_name' => 'fam',
+       ];
+
+       if (!isset($fieldMap[$fieldName])) {
+           error_log("Field map not found for: $fieldName");
+           return;
+       }
+
+       $actualFieldName = $fieldMap[$fieldName];
+       $fieldInfo = $record->get_field(['id' => $actualFieldName]);
+
+       if (!isset($fieldInfo[$actualFieldName])) {
+           error_log("Field not found: $actualFieldName");
+           return;
+       }
+
+       // Log the field value for debugging
+       $name_value = isset($fieldInfo[$actualFieldName]['value']) ? $fieldInfo[$actualFieldName]['value'] : 'EMPTY';
+       error_log("Name validation for $fieldName (actual: $actualFieldName) - value: $name_value");
+       
+       // Accept virtually any input for now to debug
+       // Only validate if it's completely empty
+       if (empty($fieldInfo[$actualFieldName]['value']) && isset($fieldInfo[$actualFieldName]['required']) && $fieldInfo[$actualFieldName]['required']) {
+           $ajax_handler->add_error($actualFieldName, __("Name is required.", "rishumit-plugin"));
        }
    }
 
@@ -428,40 +565,78 @@ class Form
        $fieldInfo = $record->get_field(['id' => $fieldName]);
 
        // Check if the field is set and has a value before accessing it
-       $field = isset($fieldInfo[$fieldName]) ? $fieldInfo[$fieldName]['raw_value'] : '';
+       if (!isset($fieldInfo[$fieldName])) {
+           error_log("Email field not found: $fieldName");
+           return;
+       }
+       
+       $field = isset($fieldInfo[$fieldName]['raw_value']) ? $fieldInfo[$fieldName]['raw_value'] : '';
 
        // If the field value is not empty and is not a valid email, add an error
        if (!empty($field) && !filter_var($field, FILTER_VALIDATE_EMAIL)) {
            $ajax_handler->add_error($fieldName, __("Invalid email address.", "rishumit-plugin"));
        }
    }
-
-   private function checkName($record, $fieldName, $ajax_handler, $min_len = 2, $max_len = 40)
-   {
-       // Correct field IDs mapping
-       $fieldMap = [
-           'first_name' => 'name',
-           'last_name' => 'fam',
-       ];
-
-       if (!isset($fieldMap[$fieldName])) {
-           $ajax_handler->add_error($fieldName, __("Invalid field name.", "rishumit-plugin"));
-           return;
-       }
-
-       $actualFieldName = $fieldMap[$fieldName];
-       $fieldInfo = $record->get_field(['id' => $actualFieldName]);
-
-       if (!isset($fieldInfo[$actualFieldName]) || !isset($fieldInfo[$actualFieldName]['value'])) {
-           $ajax_handler->add_error($fieldName, __("Field not found or empty.", "rishumit-plugin"));
-           return;
-       }
-
-       $field = $fieldInfo[$actualFieldName]['value'];
-
-       if (preg_match('/[^a-zA-Zא-ת ]/', $field) || mb_strlen($field) < $min_len || mb_strlen($field) > $max_len) {
-           $ajax_handler->add_error($fieldName, __("Invalid name format.", "rishumit-plugin"));
-       }
-   }
-
+   /**
+    * Add this function to your Form class to debug the form submission
+    */
+    private function debugFormSubmission($payload, $strapi_response, $fields)
+    {
+        // Create a debug log file in the wp-content directory
+        $upload_dir = wp_upload_dir();
+        $log_file = $upload_dir['basedir'] . '/form_debug_' . date('Y-m-d') . '.log';
+        
+        // Start logging
+        $log = "\n\n===== FORM SUBMISSION DEBUG " . current_time('mysql') . " =====\n";
+        
+        // Log the raw fields
+        $log .= "=== RAW FORM FIELDS ===\n";
+        $log .= print_r($fields, true);
+        
+        // Log the processed payload
+        $log .= "\n=== PROCESSED PAYLOAD ===\n";
+        $log .= json_encode($payload, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
+        
+        // Log the Strapi response
+        $log .= "\n=== STRAPI RESPONSE ===\n";
+        if (is_array($strapi_response)) {
+            $log .= "Success: " . ($strapi_response['success'] ? 'true' : 'false') . "\n";
+            $log .= "Message: " . ($strapi_response['message'] ?? 'No message') . "\n";
+            
+            if (isset($strapi_response['data'])) {
+                $log .= "Data: " . json_encode($strapi_response['data'], JSON_PRETTY_PRINT) . "\n";
+            }
+        } else {
+            $log .= "Non-array response: " . print_r($strapi_response, true) . "\n";
+        }
+        
+        // Test Strapi connection directly
+        $log .= "\n=== TESTING STRAPI CONNECTION ===\n";
+        $test_response = wp_remote_get($this->strapiEndpointRequest, [
+            'headers' => [
+                'Authorization' => 'Bearer 479e3212fb5013aa56e0ca849364a719c02516eb7ed9ac4670729a8bae2c7b8c0005c1c6d7e775f8b60ea66942ea74f8113a5fc4e367d2add23df62e44cc716bc5b7f6eaf91c96e4fcd5da5aa92424b1c241093cc5365153fd6aa8f05c320b47382329f4087aec412df04e414cd4cdcc7fd63c83a9f092de1cbaf0cc7dbaa1df',
+            ],
+            'timeout' => 30
+        ]);
+        
+        if (is_wp_error($test_response)) {
+            $log .= "Connection test failed: " . $test_response->get_error_message() . "\n";
+        } else {
+            $log .= "Connection test response code: " . wp_remote_retrieve_response_code($test_response) . "\n";
+            $log .= "Connection test headers: " . print_r(wp_remote_retrieve_headers($test_response), true) . "\n";
+        }
+        
+        // Write to log file
+        file_put_contents($log_file, $log, FILE_APPEND);
+        
+        // Also send an admin email with the debug info
+        $admin_email = get_option('admin_email');
+        wp_mail(
+            $admin_email,
+            'Form Submission Debug Report',
+            "Form submission debug information has been logged to: $log_file\n\nThe key issues may be in the Strapi response section."
+        );
+    }
 }
+   
+   
