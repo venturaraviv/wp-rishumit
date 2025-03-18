@@ -12,7 +12,8 @@ class Form
 
    public function __construct()
    {
-        $this->strapiEndpointRequest = 'https://be-rishumit.azurewebsites.net/api/requests';
+        $this->strapiEndpointRequest = 'https://be-rishumit-prod-f9e4fpfjebbdb0bq.israelcentral-01.azurewebsites.net/api/requests';
+        // dev https://be-rishumit.azurewebsites.net/api/requests
         $this->strapiToken = '479e3212fb5013aa56e0ca849364a719c02516eb7ed9ac4670729a8bae2c7b8c0005c1c6d7e775f8b60ea66942ea74f8113a5fc4e367d2add23df62e44cc716bc5b7f6eaf91c96e4fcd5da5aa92424b1c241093cc5365153fd6aa8f05c320b47382329f4087aec412df04e414cd4cdcc7fd63c83a9f092de1cbaf0cc7dbaa1df';
    }
 
@@ -157,8 +158,69 @@ class Form
                return false;
            }
            
-           // IMPORTANT: Success handling - only add one success message
-           $handler->add_success_message(__('Form submitted successfully.', 'rishumit-plugin'));
+           // Replace the existing redirect code in handleForms with this:
+
+        // Get the ID from the Strapi response
+        $response_id = 0;
+        // First check if ID is in the root of the response (from your example)
+        if (isset($strapi_response['data']) && isset($strapi_response['data']['id'])) {
+            $response_id = $strapi_response['data']['id'];
+        }
+        // Alternatively check the nested data structure (common in Strapi responses)
+        else if (isset($strapi_response['data']) && isset($strapi_response['data']['data']) && isset($strapi_response['data']['data']['id'])) {
+            $response_id = $strapi_response['data']['data']['id'];
+        }
+
+        // IMPORTANT: Success handling with redirect
+        if ($response_id > 0) {
+            // Get the form-specific payment URL
+            $redirect_url = $this->getPaymentUrl($form_name, $response_id);
+            
+            // Log the redirect URL for debugging
+            error_log("Redirecting to payment URL: $redirect_url");
+            
+            // Use Elementor's native redirect mechanism which is the proper way for AJAX forms
+            if (method_exists($handler, 'add_response_data')) {
+                $handler->add_response_data('redirect_url', $redirect_url);
+                $handler->add_response_data('redirect_to', $redirect_url); // Try both possible parameter names
+            }
+            
+            // Add a success message with a note about redirection
+            $handler->add_success_message(__('Form submitted successfully. Redirecting to payment page...', 'rishumit-plugin'));
+            
+            // Add a custom redirect script with a hook that runs late in the process
+            add_action('elementor_pro/forms/after_send', function() use ($redirect_url) {
+                // Output redirect JavaScript that will execute after form submission
+                add_action('wp_footer', function() use ($redirect_url) {
+                    ?>
+                    <script type="text/javascript">
+                    // Track if redirect has been triggered
+                    var redirectTriggered = false;
+                    
+                    // Function to handle redirection
+                    function handleRedirect() {
+                        if (!redirectTriggered) {
+                            redirectTriggered = true;
+                            console.log("Redirecting to payment page...");
+                            window.location.href = "<?php echo $redirect_url; ?>";
+                        }
+                    }
+                    
+                    // Add event listener for form submissions
+                    document.addEventListener('elementor/submit/success', function() {
+                        setTimeout(handleRedirect, 1500);
+                    });
+                    
+                    // Backup redirect after 3 seconds
+                    setTimeout(handleRedirect, 3000);
+                    </script>
+                    <?php
+                }, 99);
+            });
+        } else {
+            // Standard success message if no ID was obtained
+            $handler->add_success_message(__('Form submitted successfully.', 'rishumit-plugin'));
+        }
            
            return true;
            
@@ -637,6 +699,49 @@ class Form
             "Form submission debug information has been logged to: $log_file\n\nThe key issues may be in the Strapi response section."
         );
     }
+
+    /**
+     * Gets the appropriate payment URL based on the form name
+     * 
+     * @param string $form_name The name of the form submitted
+     * @param int $response_id The ID from Strapi response
+     * @return string The payment URL
+     */
+    private function getPaymentUrl($form_name, $response_id) {
+        // Define the mapping between form names and their payment URLs
+        $payment_urls = [
+            'ESTA' => 'https://meshulam.co.il/s/8970f3af-fb24-e275-dd1e-037e7692c428',
+            'Green Form' => 'https://meshulam.co.il/s/04e8e085-b32e-30cc-0136-d61b25b411f8',
+            'Income Tax Exemption' => 'https://meshulam.co.il/s/e8277735-1eae-1f8b-a101-602248f45909',
+            'Birth Name Registration' => 'https://meshulam.co.il/s/535db637-bf99-c5cd-ab1c-7ce14fab8512',
+            'Tax coordination' => 'https://meshulam.co.il/s/c697ab1b-3e6f-af97-1536-06d6cb104c52',
+            'IDF Certificates' => 'https://meshulam.co.il/quick_payment?b=5e07431f82ad1513a07a6661f0180258',
+            'ID appendix' => 'https://meshulam.co.il/s/b11b43e4-645e-4d9c-86fb-e232a5b892af',
+            'Change Address' => 'https://meshulam.co.il/s/2ede72e5-2957-ec05-a9ad-92ce9a45b459',
+            'Registration Summary' => 'https://meshulam.co.il/s/10e0a10a-925b-2d5c-aab8-35a55fdc9593',
+            'Birth Certificate' => 'https://meshulam.co.il/s/9459aa72-a5f8-aac0-5505-14c54871aa4f',
+            'Death Certificate' => 'https://meshulam.co.il/s/7b0d477d-70d4-859d-c62b-f10b14a1daa3'
+        ];
+
+        // Log the form name for debugging
+        error_log("Getting payment URL for form: $form_name");
+
+        // Check if we have a specific URL for this form
+        if (isset($payment_urls[$form_name])) {
+            $base_url = $payment_urls[$form_name];
+            
+            // Check if the URL already contains query parameters
+            if (strpos($base_url, '?') !== false) {
+                // URL already has query parameters, append the ID
+                return $base_url . '&id=' . $response_id;
+            } else {
+                // URL doesn't have query parameters, add them
+                return $base_url . '?id=' . $response_id;
+            }
+        }
+
+        // Fallback to the default payment URL if form name not found
+        error_log("No specific payment URL found for: $form_name, using default");
+        return 'https://meshulam.co.il/quick_payment?b=933da63c75d1f89aabe220cd09470043&id=' . $response_id;
+    }
 }
-   
-   
