@@ -234,73 +234,73 @@ class Form
    }
 
    private function extractUserData($fields, $form_name)
-{
-    // Initialize the base user data array
-    $user_data = [];
-
-    // Define the fields that should be included in the user data
-    $userFields = [
-        'name' => 'first_name',
-        'fam' => 'last_name',
-        'ssn' => 'ID number',
-        'email' => 'email',
-        'phone' => 'phone',
-        'father' => 'father_name',
-        'mother' => 'mother_name',
-        'day' => 'birth_day',
-        'year' => 'birth_year',
-        'month' => 'birth_month',
-        'status' => 'marital_status',
-        'ishi' => 'marital status',
-        'dob' => 'date_of_birth',
-        'sex' => 'gender',
-        'ir' => 'city_of_residence',
-        'st' => 'street',
-        'bait' => 'house_number',
-        'dira' => 'apartment_number',
-        'PO' => 'PO Number',
-        'country' => 'birth_country',
-        'nationality' => 'nationality',
-        'city' => 'birth_city',
-        'grandpa' => 'grandpa',
-    ];
-
-    // Loop through the fields and map them to user data
-    foreach ($fields as $field_key => $field) {
-        // Skip non-relevant fields
-        if (isset($field['type']) && ($field['type'] === 'html' || $field['type'] === 'step')) {
-            continue;
-        }
-
-        // Check if field title exists in the userFields mapping
-        if (isset($userFields[$field_key])) {
-            // Use ID as fallback if title is empty
-            $field_title = !empty($field['title']) ? $field['title'] : $field['id'];
-            
-            // Sanitize the field title to remove trailing colons
-            $field_title = $this->sanitizeKey($field_title);
-
-            // For ID appendix form, append "למשלוח" to specific field titles
-            if ($form_name === 'ID appendix' || $form_name === 'ספח ת.ז') {
-                $appendDelivery = [
-                    'מספר הבית',
-                    'מספר הדירה',
-                    'הישוב',
-                    'הרחוב'
-                ];
-
-                if (in_array($field_title, $appendDelivery)) {
-                    $field_title .= ' למשלוח';
-                }
-            }
-
-            // Map field to its appropriate user data key
-            $user_data[$field_title] = isset($field['value']) ? strval($field['value']) : '';
-        }
-    }
-
-    return $user_data;
-}
+   {
+       // Initialize the base user data array
+       $user_data = [];
+   
+       // Define the fields that should be included in the user data
+       $userFields = [
+           'name' => 'first_name',
+           'fam' => 'last_name',
+           'ssn' => 'ID number',
+           'email' => 'email',
+           'phone' => 'phone',
+           'father' => 'father_name',
+           'mother' => 'mother_name',
+           'day' => 'birth_day',
+           'year' => 'birth_year',
+           'month' => 'birth_month',
+           'status' => 'marital_status',
+           'ishi' => 'marital status',
+           'dob' => 'date_of_birth',
+           'sex' => 'gender',
+           'ir' => 'city_of_residence',
+           'st' => 'street',
+           'bait' => 'house_number',
+           'dira' => 'apartment_number',
+           'PO' => 'PO Number',
+           'country' => 'birth_country',
+           'nationality' => 'nationality',
+           'city' => 'birth_city',
+           'grandpa' => 'grandpa'
+       ];
+   
+       // Loop through the fields and map them to user data
+       foreach ($fields as $field_key => $field) {
+           // Skip non-relevant fields
+           if (isset($field['type']) && ($field['type'] === 'html' || $field['type'] === 'step')) {
+               continue;
+           }
+   
+           // Check if field title exists in the userFields mapping
+           if (isset($userFields[$field_key])) {
+               // Use ID as fallback if title is empty
+               $field_title = !empty($field['title']) ? $field['title'] : $field['id'];
+               
+               // Sanitize the field title to remove trailing colons
+               $field_title = $this->sanitizeKey($field_title);
+   
+               // For ID appendix form, append "למשלוח" to specific field titles
+               if ($form_name === 'ID appendix' || $form_name === 'ספח ת.ז') {
+                   $appendDelivery = [
+                       'מספר הבית',
+                       'מספר הדירה',
+                       'הישוב',
+                       'הרחוב'
+                   ];
+   
+                   if (in_array($field_title, $appendDelivery)) {
+                       $field_title .= ' למשלוח';
+                   }
+               }
+   
+               // Map field to its appropriate user data key
+               $user_data[$field_title] = isset($field['value']) ? strval($field['value']) : '';
+           }
+       }
+   
+       return $user_data;
+   }
 
    private function extractRequestData($fields, $form_name)
    {
@@ -350,13 +350,13 @@ class Form
        foreach ($fields as $field_key => $field) {
            // Skip non-relevant field types and fields part of user data
            if (
-               (isset($field['type']) && ($field['type'] === 'html' || $field['type'] === 'step')) ||
-               in_array($field_key, $user_data_fields) ||
-               preg_match('/^emp(\d+)_/', $field_key) || preg_match('/^child_\d+_/', $field_key) || preg_match('/^spouse_/', $field_key)
-               // Exclude employer, child fields and spouse fields
-               ) {
-               continue;
-           }
+            (isset($field['type']) && ($field['type'] === 'html' || $field['type'] === 'step')) ||
+            in_array($field_key, $user_data_fields) ||
+            preg_match('/^emp(\d+)_/', $field_key) || preg_match('/^child_\d+_/', $field_key) || preg_match('/^spouse_/', $field_key)
+            // Exclude employer, child fields and spouse fields
+            ) {
+            continue;
+        }
 
            // Use title as the key if available, fallback to id
            $key = !empty($field['title']) ? $field['title'] : $field['id'];
