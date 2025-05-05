@@ -1,0 +1,17 @@
+image: atlassian/default-image:latest
+
+pipelines:
+  branches:
+    staging:
+      - step:
+          name: Deploy to Rishumit WP Engine Staging
+          deployment: staging
+          clone:
+            depth: full
+          script:
+            - echo "Deploying to WP Engine Staging"
+            - mkdir -p ~/.ssh
+            - echo "$SSH_KEY" > ~/.ssh/id_rsa
+            - chmod 600 ~/.ssh/id_rsa
+            - ssh-keyscan git.wpengine.com >> ~/.ssh/known_hosts
+            - git push --force git@git.wpengine.com:rishumitstg.git staging:master
