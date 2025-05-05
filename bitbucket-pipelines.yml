@@ -13,6 +13,8 @@ pipelines:
             - mkdir -p ~/.ssh
             - echo "$SSH_KEY" > ~/.ssh/id_rsa
             - chmod 600 ~/.ssh/id_rsa
-            - head -n 5 ~/.ssh/id_rsa  # TEMP: Show first few lines
+            - ls -la ~/.ssh/id_rsa  # Check if file exists and has correct permissions
+            - wc -l ~/.ssh/id_rsa   # Check number of lines in the key file
+            - ssh-keygen -y -f ~/.ssh/id_rsa || echo "Failed to extract public key - invalid format"
             - ssh-keyscan git.wpengine.com >> ~/.ssh/known_hosts
-            - git push --force git@git.wpengine.com:rishumitstg.git staging:master
+            - GIT_SSH_COMMAND="ssh -v" git push --force git@git.wpengine.com:rishumitstg.git staging:master
