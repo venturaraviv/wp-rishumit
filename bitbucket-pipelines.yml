@@ -14,5 +14,5 @@ pipelines:
             - echo "$SSH_KEY" | base64 -d > ~/.ssh/id_rsa
             - chmod 600 ~/.ssh/id_rsa
             - ssh-keyscan git.wpengine.com >> ~/.ssh/known_hosts
-            - git push --force git@git.wpengine.com:rishumitstg.git staging:master
-            
+            - git push --force git@git.wpengine.com:rishumitstg.git staging:master 
+             
