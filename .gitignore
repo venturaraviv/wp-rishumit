@@ -28,3 +28,6 @@ wp-trackback.php
 xmlrpc.php
 wp-content/*
 !wp-content/plugins/rishumit-forms
+
+
+echo "local-xdebuginfo.php" >> .gitignore
