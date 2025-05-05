@@ -11,10 +11,8 @@ pipelines:
           script:
             - echo "Deploying to WP Engine Staging"
             - mkdir -p ~/.ssh
-            - echo "$SSH_KEY" > ~/.ssh/id_rsa
+            - echo "$SSH_KEY" | base64 -d > ~/.ssh/id_rsa
             - chmod 600 ~/.ssh/id_rsa
-            - ls -la ~/.ssh/id_rsa  # Check if file exists and has correct permissions
-            - wc -l ~/.ssh/id_rsa   # Check number of lines in the key file
-            - ssh-keygen -y -f ~/.ssh/id_rsa || echo "Failed to extract public key - invalid format"
             - ssh-keyscan git.wpengine.com >> ~/.ssh/known_hosts
-            - GIT_SSH_COMMAND="ssh -v" git push --force git@git.wpengine.com:rishumitstg.git staging:master
+            - git push --force git@git.wpengine.com:rishumitstg.git staging:master
+            
