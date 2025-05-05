@@ -22,7 +22,27 @@ class Form
        // Register hooks for form validation and submission
        add_action('elementor_pro/forms/new_record', [$this, 'handleForms'], 10, 2);
        add_action('elementor_pro/forms/validation', [$this, 'validation'], 10, 2);
+
+       add_action('elementor_pro/forms/validation/tel', [$this, 'validatePhoneField'], 10, 3);
    }
+
+   public function validatePhoneField($field, $record, $ajax_handler)
+    {
+        // Get the phone value
+        $phone_value = $field['value'] ?? '';
+        
+        // Strip all non-numeric characters
+        $phone_value = preg_replace('/[^0-9]/', '', $phone_value);
+        
+        // Validate the phone number with Israeli format
+        if (empty($phone_value)) {
+            $ajax_handler->add_error($field['id'], __("Phone number is required.", "rishumit-plugin"));
+        } elseif (strlen($phone_value) !== 10 || substr($phone_value, 0, 2) !== '05') {
+            $ajax_handler->add_error($field['id'], __("Please enter a valid Israeli mobile number (10 digits starting with 05).", "rishumit-plugin"));
+        }
+        
+        error_log("Global Phone Validation - Field: " . $field['id'] . ", Value: " . $phone_value);
+    }
 
    public function validation($record, $ajax_handler)
    {
@@ -787,8 +807,8 @@ class Form
             'successUrl' => site_url('/thank-you?id=' . $strapi_id),
             'cancelUrl' => site_url('/payment-cancelled'),
             'description' => 'Form: ' . $form_name . ' / ID: ' . $strapi_id,
-            'pageField[fullName]' => $full_name,
-            'pageField[phone]' => $phone,
+            'pageField[fullName]' => trim($full_name),
+            'pageField[phone]' => preg_replace('/[^0-9]/', '', $phone),
             'pageField[email]' => $email,
             'cField1' => $strapi_id,
         ];
@@ -815,7 +835,7 @@ class Form
             error_log("Meshulam payment creation failed: " . 
                 (isset($body['err']['message']) ? $body['err']['message'] : 'Unknown error'));
             // Return a reliable fallback URL if payment creation fails
-            return site_url('/payment-fallback?id=' . $strapi_id);
+            return site_url('/thank-you?id=' . $strapi_id . '&payment_pending=1');
         }
     
         return isset($body['data']['url']) ? $body['data']['url'] : false;
@@ -828,14 +848,14 @@ class Form
             'Income Tax Exemption' => 239,
             'Birth Name Registration' => 189,
             'Tax coordination' => 229,
-            // 'IDF Certificates' => 40,
+            'IDF Certificates' => 1, //159
             'ID appendix' => 189,
             'Change Address' => 189,
             'Registration Summary' => 189,
             'Birth Certificate' => 189,
-            // 'Death Certificate' => 100,
+            'Death Certificate' => 189,
         ];
-        return $amounts[$form_name] ?? 50;
+        return $amounts[$form_name] ?? 159;
     }
     
     
