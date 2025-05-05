@@ -24,6 +24,7 @@ class Form
        add_action('elementor_pro/forms/validation', [$this, 'validation'], 10, 2);
 
        add_action('elementor_pro/forms/validation/tel', [$this, 'validatePhoneField'], 10, 3);
+       add_action('elementor_pro/forms/validation/number', [$this, 'validateIsraeliID'], 10, 3);
    }
 
    public function validatePhoneField($field, $record, $ajax_handler)
@@ -44,38 +45,95 @@ class Form
         error_log("Global Phone Validation - Field: " . $field['id'] . ", Value: " . $phone_value);
     }
 
-   public function validation($record, $ajax_handler)
-   {
-       // 1. Check if record and ajax_handler exist
-       if (!$record || !$ajax_handler) {
-           error_log('Invalid form record or ajax handler');
-           return;
-       }
+    /**
+ * Validate Israeli ID number (teudat zehut)
+ */
+/**
+ * Validate Israeli ID number (teudat zehut)
+ */
+public function validateIsraeliID($field, $record, $ajax_handler)
+{
+    // Get the ID value
+    $id_value = $field['value'] ?? '';
+    
+    // Strip all non-numeric characters
+    $id_value = preg_replace('/[^0-9]/', '', $id_value);
+    
+    // Initialize validation variables
+    $id_sum = 0;
+    $is_valid = true;
+    
+    // Validate the ID number must be exactly 9 digits
+    if (empty($id_value)) {
+        $ajax_handler->add_error($field['id'], __("ID number is required.", "rishumit-plugin"));
+        $is_valid = false;
+    } elseif (strlen($id_value) !== 9) {
+        $ajax_handler->add_error($field['id'], __("Please enter a valid Israeli ID number (exactly 9 digits).", "rishumit-plugin"));
+        $is_valid = false;
+    } else {
+        // Perform the ID check digit validation algorithm
+        $id_sum = 0;
+        for ($i = 0; $i < 9; $i++) {
+            $digit = (int)$id_value[$i];
+            
+            // For even positions (0-based index)
+            if ($i % 2 === 0) {
+                $id_sum += $digit;
+            } else {
+                // For odd positions, multiply by 2 and sum digits if > 9
+                $digit *= 2;
+                $id_sum += ($digit > 9) ? ($digit - 9) : $digit;
+            }
+        }
+        
+        // The ID is valid if the sum is divisible by 10
+        if ($id_sum % 10 !== 0) {
+            $ajax_handler->add_error($field['id'], __("The ID number is invalid. Please check and try again.", "rishumit-plugin"));
+            $is_valid = false;
+        }
+    }
+    
+    error_log("Israeli ID Validation - Field: " . $field['id'] . ", Value: " . $id_value . ", Valid: " . ($is_valid ? 'Yes' : 'No'));
+}
 
-       // 2. Get form settings properly
-       $formName = $record->get_form_settings('form_name') ?? 'Unknown Form';
-       
-       // Only validate basic fields if they exist
-       // Email validation
-       if ($this->fieldExists($record, 'email')) {
-           $this->checkEmail($record, 'email', $ajax_handler);
-       }
-       
-       // First name validation
-       if ($this->fieldExists($record, 'name')) {
-           $this->checkName($record, 'first_name', $ajax_handler, 1, 50);
-       }
-       
-       // Last name validation
-       if ($this->fieldExists($record, 'fam')) {
-           $this->checkName($record, 'last_name', $ajax_handler, 1, 50);
-       }
-       
-       // Phone validation
-       if ($this->fieldExists($record, 'phone')) {
-           $this->checkPhoneNumber($record, 'phone', $ajax_handler, 7, 15);
-       }
-   }
+public function validation($record, $ajax_handler)
+{
+    // 1. Check if record and ajax_handler exist
+    if (!$record || !$ajax_handler) {
+        error_log('Invalid form record or ajax handler');
+        return;
+    }
+
+    // 2. Get form settings properly
+    $formName = $record->get_form_settings('form_name') ?? 'Unknown Form';
+    
+    // Only validate basic fields if they exist
+    // Email validation
+    if ($this->fieldExists($record, 'email')) {
+        $this->checkEmail($record, 'email', $ajax_handler);
+    }
+    
+    // First name validation
+    if ($this->fieldExists($record, 'name')) {
+        $this->checkName($record, 'first_name', $ajax_handler, 1, 50);
+    }
+    
+    // Last name validation
+    if ($this->fieldExists($record, 'fam')) {
+        $this->checkName($record, 'last_name', $ajax_handler, 1, 50);
+    }
+    
+    // Phone validation
+    if ($this->fieldExists($record, 'phone')) {
+        $this->checkPhoneNumber($record, 'phone', $ajax_handler, 7, 15);
+    }
+    
+    // ID number validation
+    if ($this->fieldExists($record, 'ssn')) {
+        $field = $record->get_field(['id' => 'ssn'])['ssn'];
+        $this->validateIsraeliID($field, $record, $ajax_handler);
+    }
+}
 
    /**
     * Check if a field exists in the form record
