@@ -839,7 +839,8 @@ public function validation($record, $ajax_handler)
             'pageField[fullName]' => trim($full_name),
             'pageField[phone]' => preg_replace('/[^0-9]/', '', $phone),
             'pageField[email]' => $email,
-            'cField1' => $strapi_id,
+            // 'cField1' => $strapi_id, 
+            'id' => $strapi_id,
         ];
     
         // Add more detailed logging
