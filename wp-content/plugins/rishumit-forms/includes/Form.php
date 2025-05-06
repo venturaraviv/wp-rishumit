@@ -38,9 +38,9 @@ class Form
         
         // Validate the phone number with Israeli format
         if (empty($phone_value)) {
-            $ajax_handler->add_error($field['id'], __("Phone number is required.", "rishumit-plugin"));
+            $ajax_handler->add_error($field['id'], __("מספר טלפון נדרש.", "rishumit-plugin"));
         } elseif (strlen($phone_value) !== 10 || substr($phone_value, 0, 2) !== '05') {
-            $ajax_handler->add_error($field['id'], __("Please enter a valid Israeli mobile number (10 digits starting with 05).", "rishumit-plugin"));
+            $ajax_handler->add_error($field['id'], __("אנא הזן מספר טלפון נייד ישראלי תקין (10 ספרות המתחילות ב-05).", "rishumit-plugin"));
         }
         
         error_log("Global Phone Validation - Field: " . $field['id'] . ", Value: " . $phone_value);
@@ -55,9 +55,9 @@ class Form
         $id_value = preg_replace('/[^0-9]/', '', $field['value'] ?? '');
     
         if (empty($id_value)) {
-            $ajax_handler->add_error($field['id'], __("ID number is required.", "rishumit-plugin"));
+            $ajax_handler->add_error($field['id'], __("מספר תעודת זהות נדרש.", "rishumit-plugin"));
         } elseif (strlen($id_value) !== 9) {
-            $ajax_handler->add_error($field['id'], __("Please enter a valid Israeli ID number (exactly 9 digits).", "rishumit-plugin"));
+            $ajax_handler->add_error($field['id'], __("אנא הזן מספר תעודת זהות ישראלית תקינה (בדיוק 9 ספרות).", "rishumit-plugin"));
         }
     
         error_log("Lenient ID Validation - Field: " . $field['id'] . ", Value: " . $id_value);
@@ -200,7 +200,7 @@ public function validation($record, $ajax_handler)
            if (!$strapi_response['success']) {
                // If Strapi reported an error
                error_log('Strapi error: ' . $strapi_response['message']);
-               $handler->add_error_message(__('Submission failed: ' . $strapi_response['message'], 'rishumit-plugin'));
+               $handler->add_error_message(__("השליחה נכשלה: " . $strapi_response['message'], "rishumit-plugin"));
                return false;
            }
            
@@ -256,7 +256,7 @@ public function validation($record, $ajax_handler)
             }
             
             // Add a success message with a note about redirection
-            $handler->add_success_message(__('Form submitted successfully. Redirecting to payment page...', 'rishumit-plugin'));
+            $handler->add_success_message(__("הטופס נשלח בהצלחה. מעביר לדף תשלום...", "rishumit-plugin"));
             
             // Add a custom redirect script with a hook that runs late in the process
             add_action('elementor_pro/forms/after_send', function() use ($redirect_url) {
@@ -289,7 +289,7 @@ public function validation($record, $ajax_handler)
             });
         } else {
             // Standard success message if no ID was obtained
-            $handler->add_success_message(__('Form submitted successfully.', 'rishumit-plugin'));
+            $handler->add_success_message(__("הטופס נשלח בהצלחה.", "rishumit-plugin"));
         }
            
            return true;
@@ -298,7 +298,7 @@ public function validation($record, $ajax_handler)
            // If any unexpected error occurs, log it and show a generic error
            error_log('Exception in handleForms: ' . $e->getMessage());
            error_log('Exception trace: ' . $e->getTraceAsString());
-           $handler->add_error_message(__('An unexpected error occurred. Please try again later.', 'rishumit-plugin'));
+           $handler->add_error_message(__("אירעה שגיאה לא צפויה. אנא נסה שוב מאוחר יותר.", "rishumit-plugin"));
            return false;
        }
    }
@@ -708,8 +708,8 @@ public function validation($record, $ajax_handler)
        // Accept virtually any input for now to debug
        // Only validate if it's completely empty
        if (empty($fieldInfo[$actualFieldName]['value']) && isset($fieldInfo[$actualFieldName]['required']) && $fieldInfo[$actualFieldName]['required']) {
-           $ajax_handler->add_error($actualFieldName, __("Name is required.", "rishumit-plugin"));
-       }
+            $ajax_handler->add_error($actualFieldName, __("שם נדרש.", "rishumit-plugin"));
+    }
    }
 
    private function checkEmail($record, $fieldName, $ajax_handler)
@@ -727,8 +727,8 @@ public function validation($record, $ajax_handler)
 
        // If the field value is not empty and is not a valid email, add an error
        if (!empty($field) && !filter_var($field, FILTER_VALIDATE_EMAIL)) {
-           $ajax_handler->add_error($fieldName, __("Invalid email address.", "rishumit-plugin"));
-       }
+            $ajax_handler->add_error($fieldName, __("כתובת אימייל לא תקינה.", "rishumit-plugin"));
+    }
    }
    /**
     * Add this function to your Form class to debug the form submission

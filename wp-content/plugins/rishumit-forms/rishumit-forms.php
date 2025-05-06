@@ -33,3 +33,36 @@ add_action('rishumit_expire_payment_link', 'rishumit_expire_payment_link_callbac
 function rishumit_expire_payment_link_callback($id) {
     delete_option('rishumit_payment_url_' . $id);
 }
+
+// Add custom validation messages in Hebrew
+function rishumit_custom_validation_messages() {
+    // Only load on frontend
+    if (is_admin()) {
+        return;
+    }
+    
+    // Register and enqueue the script with no source file (we'll use inline script)
+    wp_register_script('rishumit-validation-messages', false);
+    
+    // Add inline script with the Hebrew validation message
+    $script = '
+    document.addEventListener("DOMContentLoaded", function() {
+        var formElements = document.querySelectorAll("input, select, textarea");
+        for (var i = 0; i < formElements.length; i++) {
+            formElements[i].oninvalid = function(e) {
+                e.target.setCustomValidity("");
+                if (!e.target.validity.valid) {
+                    e.target.setCustomValidity("אנא מלא שדה זה");
+                }
+            };
+            formElements[i].oninput = function(e) {
+                e.target.setCustomValidity("");
+            };
+        }
+    });
+    ';
+    
+    wp_add_inline_script('rishumit-validation-messages', $script);
+    wp_enqueue_script('rishumit-validation-messages', '', array(), '1.0', true);
+}
+add_action('wp_enqueue_scripts', 'rishumit_custom_validation_messages');
