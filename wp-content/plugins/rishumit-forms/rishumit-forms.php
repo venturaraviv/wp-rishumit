@@ -27,3 +27,9 @@ function rishumit_forms_init() {
     $formHandler->register();
 }
 add_action('plugins_loaded', 'rishumit_forms_init');
+
+add_action('rishumit_expire_payment_link', 'rishumit_expire_payment_link_callback');
+
+function rishumit_expire_payment_link_callback($id) {
+    delete_option('rishumit_payment_url_' . $id);
+}

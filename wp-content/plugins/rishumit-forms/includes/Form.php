@@ -12,7 +12,8 @@ class Form
 
    public function __construct()
    {
-        $this->strapiEndpointRequest = 'https://be-rishumit-prod-f9e4fpfjebbdb0bq.israelcentral-01.azurewebsites.net/api/requests';
+        // $this->strapiEndpointRequest = 'https://be-rishumit-prod-f9e4fpfjebbdb0bq.israelcentral-01.azurewebsites.net/api/requests';
+        $this->strapiEndpointRequest = 'https://be-rishumit.azurewebsites.net/api/requests';
         // dev https://be-rishumit.azurewebsites.net/api/requests
         $this->strapiToken = '479e3212fb5013aa56e0ca849364a719c02516eb7ed9ac4670729a8bae2c7b8c0005c1c6d7e775f8b60ea66942ea74f8113a5fc4e367d2add23df62e44cc716bc5b7f6eaf91c96e4fcd5da5aa92424b1c241093cc5365153fd6aa8f05c320b47382329f4087aec412df04e414cd4cdcc7fd63c83a9f092de1cbaf0cc7dbaa1df';
    }
@@ -57,7 +58,7 @@ public function validateIsraeliID($field, $record, $ajax_handler)
     if ($field['id'] !== 'ssn') {
         return;
     }
-    
+
     // Get the ID value
     $id_value = $field['value'] ?? '';
     
@@ -274,6 +275,9 @@ public function validation($record, $ajax_handler)
                 $form_name,
                 $response_id
             );
+
+            update_option('rishumit_payment_url_' . $response_id, $redirect_url);
+            wp_schedule_single_event(time() + HOUR_IN_SECONDS * 24, 'rishumit_expire_payment_link', [$response_id]);
                         
             // Log the redirect URL for debugging
             error_log("Payment URL received from Meshulam: " . $redirect_url);
@@ -868,7 +872,7 @@ public function validation($record, $ajax_handler)
             'pageCode' => '247c6e7c16d7',
             'sum' => $this->getAmountByForm($form_name),
             'successUrl' => site_url('/thank-you?id=' . $strapi_id),
-            'cancelUrl' => site_url('/payment-cancelled'),
+            'cancelUrl' => site_url('/payment-cancelled?id=' . $strapi_id),
             'description' => 'Form: ' . $form_name . ' / ID: ' . $strapi_id,
             'pageField[fullName]' => trim($full_name),
             'pageField[phone]' => preg_replace('/[^0-9]/', '', $phone),
@@ -906,18 +910,18 @@ public function validation($record, $ajax_handler)
 
     private function getAmountByForm($form_name) {
         $amounts = [
-            'ESTA' => 299,
-            'Green Form' => 189,
-            'Income Tax Exemption' => 239,
-            'Birth Name Registration' => 189,
-            'Tax coordination' => 229,
-            'IDF Certificates' => 1, //159
-            'ID appendix' => 189,
-            'Change Address' => 189,
-            'Registration Summary' => 189,
-            'Birth Certificate' => 189,
-            'Death Certificate' => 189,
-        ];
+        'ESTA' => 1, //299
+        'Green Form' => 1, //189
+        'Income Tax Exemption' => 1, //239
+        'Birth Name Registration' => 1, //189
+        'Tax coordination' => 1, //229
+        'IDF Certificates' => 1, //159
+        'ID appendix' => 1, //189
+        'Change Address' => 1, //189
+        'Registration Summary' => 1, //189
+        'Birth Certificate' => 1, //189
+        'Death Certificate' => 1, //189
+    ];
         return $amounts[$form_name] ?? 159;
     }
     
