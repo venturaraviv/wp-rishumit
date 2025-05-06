@@ -53,6 +53,11 @@ class Form
  */
 public function validateIsraeliID($field, $record, $ajax_handler)
 {
+    // Only validate if this is actually an ID field (like 'ssn')
+    if ($field['id'] !== 'ssn') {
+        return;
+    }
+    
     // Get the ID value
     $id_value = $field['value'] ?? '';
     
@@ -251,7 +256,7 @@ public function validation($record, $ajax_handler)
 
         // IMPORTANT: Success handling with redirect
         if ($response_id > 0) {
-            // Get the user phone for payment processing
+            // Get the form-specific payment URL
             $user_phone = '';
             if (isset($user['phone'])) {
                 $user_phone = $user['phone'];
@@ -261,8 +266,7 @@ public function validation($record, $ajax_handler)
                 $user_phone = $fields['phone']['value'];
             }
             error_log("Phone being sent to payment gateway: $user_phone");
-        
-            // Create the payment link
+
             $redirect_url = $this->createPaymentLink(
                 $user['שם פרטי'] . ' ' . ($user['שם משפחה'] ?? ''),
                 $user_phone,
@@ -270,23 +274,14 @@ public function validation($record, $ajax_handler)
                 $form_name,
                 $response_id
             );
-
-            // Save the payment URL for later use
-            if ($redirect_url && $response_id) {
-                update_option('rishumit_payment_url_' . $response_id, $redirect_url);
-            }
                         
             // Log the redirect URL for debugging
             error_log("Payment URL received from Meshulam: " . $redirect_url);
-        
+
             if (empty($redirect_url)) {
-                error_log("Empty payment URL received, redirecting to specific thank you page");
-                // Use the new getThankYouPageUrl method for the fallback
-                $redirect_url = $this->getThankYouPageUrl($form_name, $response_id);
+                error_log("Empty payment URL received, redirecting to default thank you page");
+                $redirect_url = site_url('/thank-you?id=' . $response_id . '&payment_pending=1');
             }
-            
-            // Update the success URL in createPaymentLink parameters to use form-specific thank you page
-            $success_url = $this->getThankYouPageUrl($form_name, $response_id);
             
             // Use Elementor's native redirect mechanism which is the proper way for AJAX forms
             if (method_exists($handler, 'add_response_data')) {
@@ -868,16 +863,12 @@ public function validation($record, $ajax_handler)
             $full_name = substr($full_name, 0, 47) . '...';
         }
     
-        // Get the form-specific thank you page
-        $success_url = $this->getThankYouPageUrl($form_name, $strapi_id);
-        $cancel_url = site_url('/payment-canceled?id=' . $strapi_id);
-    
         $params = [
             'userId' => '85eaf86f53661afe',
             'pageCode' => '247c6e7c16d7',
             'sum' => $this->getAmountByForm($form_name),
-            'successUrl' => $success_url, // Use the form-specific thank you page
-            'cancelUrl' => $cancel_url,
+            'successUrl' => site_url('/thank-you?id=' . $strapi_id),
+            'cancelUrl' => site_url('/payment-cancelled'),
             'description' => 'Form: ' . $form_name . ' / ID: ' . $strapi_id,
             'pageField[fullName]' => trim($full_name),
             'pageField[phone]' => preg_replace('/[^0-9]/', '', $phone),
@@ -906,8 +897,8 @@ public function validation($record, $ajax_handler)
         if (!isset($body['status']) || $body['status'] !== 1) {
             error_log("Meshulam payment creation failed: " . 
                 (isset($body['err']['message']) ? $body['err']['message'] : 'Unknown error'));
-            // Return the form-specific thank you URL if payment creation fails
-            return $success_url . '&payment_pending=1';
+            // Return a reliable fallback URL if payment creation fails
+            return site_url('/thank-you?id=' . $strapi_id . '&payment_pending=1');
         }
     
         return isset($body['data']['url']) ? $body['data']['url'] : false;
@@ -929,33 +920,6 @@ public function validation($record, $ajax_handler)
         ];
         return $amounts[$form_name] ?? 159;
     }
-
-    /**
- * Get the appropriate thank you page URL based on form name
- * 
- * @param string $form_name The name of the form
- * @param int $id The ID of the submission
- * @return string The URL to redirect to
- */
-private function getThankYouPageUrl($form_name, $id) {
-    $pages = [
-        'Birth Name Registration' => '/פנייתך-התקבלה-בהצלחה-4/',
-        'ID appendix' => '/פנייתך-התקבלה-בהצלחה-3/',
-        'Registration Summary' => '/פנייתך-התקבלה-בהצלחה-2/',
-        'ESTA' => '/פנייתך-לאישור-esta-התקבלה-בהצלחה/',
-        'Birth Certificate' => '/פנייתך-התקבלה-בהצלחה-6/',
-        'Income Tax Exemption' => '/פנייתך-התקבלה-בהצלחה-5-2/',
-        'Green Form' => '/פנייתך-התקבלה-בהצלחה/',
-        'Change Address' => '/פנייתך-התקבלה-בהצלחה-9/',
-        'Death Certificate' => '/פנייתך-התקבלה-בהצלחה-7/',
-        'Tax coordination' => '/פנייתך-התקבלה-בהצלחה-8/',
-        'IDF Certificates' => '/פנייתך-התקבלה-בהצלחה-8/'
-    ];
-    
-    // Fallback thank-you page if no match
-    $base = $pages[$form_name] ?? '/פנייתך-התקבלה-בהצלחה-8/';
-    return site_url($base . '?id=' . $id . '&response=success');
-}
     
     
 }
