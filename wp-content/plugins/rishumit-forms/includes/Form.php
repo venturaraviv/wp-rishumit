@@ -46,61 +46,23 @@ class Form
         error_log("Global Phone Validation - Field: " . $field['id'] . ", Value: " . $phone_value);
     }
 
-    /**
- * Validate Israeli ID number (teudat zehut)
- */
-/**
- * Validate Israeli ID number (teudat zehut)
- */
-public function validateIsraeliID($field, $record, $ajax_handler)
-{
-    // Only validate if this is actually an ID field (like 'ssn')
-    if ($field['id'] !== 'ssn') {
-        return;
-    }
-
-    // Get the ID value
-    $id_value = $field['value'] ?? '';
-    
-    // Strip all non-numeric characters
-    $id_value = preg_replace('/[^0-9]/', '', $id_value);
-    
-    // Initialize validation variables
-    $id_sum = 0;
-    $is_valid = true;
-    
-    // Validate the ID number must be exactly 9 digits
-    if (empty($id_value)) {
-        $ajax_handler->add_error($field['id'], __("ID number is required.", "rishumit-plugin"));
-        $is_valid = false;
-    } elseif (strlen($id_value) !== 9) {
-        $ajax_handler->add_error($field['id'], __("Please enter a valid Israeli ID number (exactly 9 digits).", "rishumit-plugin"));
-        $is_valid = false;
-    } else {
-        // Perform the ID check digit validation algorithm
-        $id_sum = 0;
-        for ($i = 0; $i < 9; $i++) {
-            $digit = (int)$id_value[$i];
-            
-            // For even positions (0-based index)
-            if ($i % 2 === 0) {
-                $id_sum += $digit;
-            } else {
-                // For odd positions, multiply by 2 and sum digits if > 9
-                $digit *= 2;
-                $id_sum += ($digit > 9) ? ($digit - 9) : $digit;
-            }
+    public function validateIsraeliID($field, $record, $ajax_handler)
+    {
+        if ($field['id'] !== 'ssn') {
+            return;
         }
-        
-        // The ID is valid if the sum is divisible by 10
-        if ($id_sum % 10 !== 0) {
-            $ajax_handler->add_error($field['id'], __("The ID number is invalid. Please check and try again.", "rishumit-plugin"));
-            $is_valid = false;
+    
+        $id_value = preg_replace('/[^0-9]/', '', $field['value'] ?? '');
+    
+        if (empty($id_value)) {
+            $ajax_handler->add_error($field['id'], __("ID number is required.", "rishumit-plugin"));
+        } elseif (strlen($id_value) !== 9) {
+            $ajax_handler->add_error($field['id'], __("Please enter a valid Israeli ID number (exactly 9 digits).", "rishumit-plugin"));
         }
+    
+        error_log("Lenient ID Validation - Field: " . $field['id'] . ", Value: " . $id_value);
     }
     
-    error_log("Israeli ID Validation - Field: " . $field['id'] . ", Value: " . $id_value . ", Valid: " . ($is_valid ? 'Yes' : 'No'));
-}
 
 public function validation($record, $ajax_handler)
 {
