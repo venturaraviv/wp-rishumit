@@ -12,8 +12,8 @@ class Form
 
    public function __construct()
    {
-        // $this->strapiEndpointRequest = 'https://be-rishumit-prod-f9e4fpfjebbdb0bq.israelcentral-01.azurewebsites.net/api/requests';
-        $this->strapiEndpointRequest = 'https://be-rishumit.azurewebsites.net/api/requests';
+        $this->strapiEndpointRequest = 'https://be-rishumit-prod-f9e4fpfjebbdb0bq.israelcentral-01.azurewebsites.net/api/requests';
+        // $this->strapiEndpointRequest = 'https://be-rishumit.azurewebsites.net/api/requests';
         // dev https://be-rishumit.azurewebsites.net/api/requests
         $this->strapiToken = '479e3212fb5013aa56e0ca849364a719c02516eb7ed9ac4670729a8bae2c7b8c0005c1c6d7e775f8b60ea66942ea74f8113a5fc4e367d2add23df62e44cc716bc5b7f6eaf91c96e4fcd5da5aa92424b1c241093cc5365153fd6aa8f05c320b47382329f4087aec412df04e414cd4cdcc7fd63c83a9f092de1cbaf0cc7dbaa1df';
    }
@@ -51,17 +51,42 @@ class Form
         if ($field['id'] !== 'ssn') {
             return;
         }
-    
-        $id_value = preg_replace('/[^0-9]/', '', $field['value'] ?? '');
-    
+
+        $id_value = preg_replace('/\D/', '', $field['value'] ?? '');
+        $id_value = str_pad($id_value, 9, '0', STR_PAD_LEFT);
+
         if (empty($id_value)) {
             $ajax_handler->add_error($field['id'], __("מספר תעודת זהות נדרש.", "rishumit-plugin"));
-        } elseif (strlen($id_value) !== 9) {
-            $ajax_handler->add_error($field['id'], __("אנא הזן מספר תעודת זהות ישראלית תקינה (בדיוק 9 ספרות).", "rishumit-plugin"));
+        } elseif (strlen($id_value) !== 9 || !$this->isValidIsraeliID($id_value)) {
+            $ajax_handler->add_error($field['id'], __("אנא הזן מספר תעודת זהות ישראלית תקינה.", "rishumit-plugin"));
         }
-    
-        error_log("Lenient ID Validation - Field: " . $field['id'] . ", Value: " . $id_value);
+
+        error_log("ID Validation - Field: " . $field['id'] . ", Value: " . $id_value);
     }
+
+
+    private function isValidIsraeliID($id)
+    {
+        $id = str_pad($id, 9, '0', STR_PAD_LEFT);
+
+        if (!preg_match('/^\d{9}$/', $id)) {
+            return false;
+        }
+
+        $sum = 0;
+        for ($i = 0; $i < 9; $i++) {
+            $digit = (int) $id[$i];
+            $calc = $digit * (($i % 2) + 1);
+            if ($calc > 9) {
+                $calc -= 9;
+            }
+            $sum += $calc;
+        }
+
+        return ($sum % 10 === 0);
+    }
+
+    
     
 
 public function validation($record, $ajax_handler)
@@ -367,10 +392,12 @@ public function validation($record, $ajax_handler)
                // Map field to its appropriate user data key
                $user_data[$field_title] = isset($field['value']) ? strval($field['value']) : '';
 
-               if ($field_key == 'phone') {
-                $user_data['phone'] = isset($field['value']) ? strval($field['value']) : '';
-                } elseif ($field_key == 'email') {
-                    $user_data['email'] = isset($field['value']) ? strval($field['value']) : '';
+                if ($form_name !== 'Tabu Service') {
+                    if ($field_key == 'phone') {
+                    $user_data['phone'] = isset($field['value']) ? strval($field['value']) : '';
+                    } elseif ($field_key == 'email') {
+                        $user_data['email'] = isset($field['value']) ? strval($field['value']) : '';
+                    }
                 }
            }
        }
@@ -839,7 +866,7 @@ public function validation($record, $ajax_handler)
             'pageField[fullName]' => trim($full_name),
             'pageField[phone]' => preg_replace('/[^0-9]/', '', $phone),
             'pageField[email]' => $email,
-            // 'cField1' => $strapi_id, 
+            'cField1' => $strapi_id, 
             'id' => $strapi_id,
         ];
     
@@ -884,6 +911,7 @@ public function validation($record, $ajax_handler)
         'Registration Summary' => 1, //189
         'Birth Certificate' => 1, //189
         'Death Certificate' => 1, //189
+        'Tabu Service' => 1, //?
     ];
         return $amounts[$form_name] ?? 159;
     }
