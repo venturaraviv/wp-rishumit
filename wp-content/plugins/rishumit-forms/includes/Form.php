@@ -9,13 +9,23 @@ class Form
     private $strapiEndpointUser;
     private $strapiEndpointRequest;
     private $strapiToken;
+    private $notifyUrl;
 
     public function __construct()
     {
-        // $this->strapiEndpointRequest = 'https://be-rishumit-prod-f9e4fpfjebbdb0bq.israelcentral-01.azurewebsites.net/api/requests';
-        // $this->strapiEndpointRequest = 'https://be-rishumit.azurewebsites.net/api/requests';
-        $this->strapiEndpointRequest = 'http://localhost:1337/api/requests';
-        // dev https://be-rishumit.azurewebsites.net/api/requests
+        $site_url = get_site_url();
+
+        if (strpos($site_url, 'local') !== false) {
+            $this->strapiEndpointRequest = 'http://localhost:1337/api/requests';
+            $this->notifyUrl = 'https://3f42cddfcba8.ngrok-free.app/api/webhooks/create';
+        } elseif (strpos($site_url, 'rishumitstg') !== false || strpos($site_url, 'azurewebsites.net') !== false) {
+            $this->strapiEndpointRequest = 'https://be-rishumit.azurewebsites.net/api/requests';
+            $this->notifyUrl = 'https://be-rishumit.azurewebsites.net/api/webhooks/create';
+        } else {
+            $this->strapiEndpointRequest = 'https://be-rishumit-prod-f9e4fpfjebbdb0bq.israelcentral-01.azurewebsites.net/api/requests';
+            $this->notifyUrl = 'https://be-rishumit-prod-f9e4fpfjebbdb0bq.israelcentral-01.azurewebsites.net/api/webhooks/create';
+        }
+
         $this->strapiToken = '479e3212fb5013aa56e0ca849364a719c02516eb7ed9ac4670729a8bae2c7b8c0005c1c6d7e775f8b60ea66942ea74f8113a5fc4e367d2add23df62e44cc716bc5b7f6eaf91c96e4fcd5da5aa92424b1c241093cc5365153fd6aa8f05c320b47382329f4087aec412df04e414cd4cdcc7fd63c83a9f092de1cbaf0cc7dbaa1df';
         // $this->strapiToken = '';
     }
@@ -866,6 +876,7 @@ class Form
             'sum' => $this->getAmountByForm($form_name),
             'successUrl' => site_url('/thank-you?id=' . $strapi_id),
             'cancelUrl' => site_url('/payment-cancelled?id=' . $strapi_id),
+            'notifyUrl' => $this->notifyUrl,
             'description' => 'Form: ' . $form_name . ' / ID: ' . $strapi_id,
             'pageField[fullName]' => trim($full_name),
             'pageField[phone]' => preg_replace('/[^0-9]/', '', $phone),
