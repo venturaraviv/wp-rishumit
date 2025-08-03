@@ -17,7 +17,7 @@ class Form
 
         if (strpos($site_url, 'local') !== false) {
             $this->strapiEndpointRequest = 'http://localhost:1337/api/requests';
-            $this->notifyUrl = 'https://3f42cddfcba8.ngrok-free.app/api/webhooks/create';
+            $this->notifyUrl = 'https://8704a5024e8b.ngrok-free.app/api/webhooks/create'; //local testing, must update each time 
         } elseif (strpos($site_url, 'rishumitstg') !== false || strpos($site_url, 'azurewebsites.net') !== false) {
             $this->strapiEndpointRequest = 'https://be-rishumit.azurewebsites.net/api/requests';
             $this->notifyUrl = 'https://be-rishumit.azurewebsites.net/api/webhooks/create';
@@ -916,18 +916,18 @@ class Form
     private function getAmountByForm($form_name)
     {
         $amounts = [
-        'ESTA' => 1, //299
-        'Green Form' => 1, //189
-        'Income Tax Exemption' => 1, //239
-        'Birth Name Registration' => 1, //189
-        'Tax coordination' => 1, //229
-        'IDF Certificates' => 1, //159
-        'ID appendix' => 1, //189
-        'Change Address' => 1, //189
-        'Registration Summary' => 1, //189
-        'Birth Certificate' => 1, //189
-        'Death Certificate' => 1, //189
-        'Tabu Service' => 1, //?
+        'ESTA' => 299,
+        'Green Form' => 189,
+        'Income Tax Exemption' => 239,
+        'Birth Name Registration' => 189,
+        'Tax coordination' => 229,
+        'IDF Certificates' => 159,
+        'ID appendix' => 189,
+        'Change Address' => 189,
+        'Registration Summary' => 189,
+        'Birth Certificate' => 189,
+        'Death Certificate' => 189,
+        'Tabu Service' => 189
     ];
         return $amounts[$form_name] ?? 159;
     }
