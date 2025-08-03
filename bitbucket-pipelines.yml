@@ -23,7 +23,7 @@ pipelines:
           clone:
             depth: full
           script:
-            - echo "Deploying to WP Engine Staging"
+            - echo "Deploying to WP Engine Staging" 
             - mkdir -p ~/.ssh
             - echo "$SSH_KEY" | base64 -d > ~/.ssh/id_rsa
             - chmod 600 ~/.ssh/id_rsa
