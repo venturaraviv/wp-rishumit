@@ -16,7 +16,7 @@ pipelines:
             - ssh-keyscan git.wpengine.com >> ~/.ssh/known_hosts
             - git push --force git@git.wpengine.com:rishumit1.git main:master
 
-    staging:
+    staging: 
       - step:
           name: Deploy to Rishumit WP Engine Staging
           deployment: staging

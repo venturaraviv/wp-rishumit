@@ -17,7 +17,7 @@ class Form
 
         if (strpos($site_url, 'local') !== false) {
             $this->strapiEndpointRequest = 'http://localhost:1337/api/requests';
-            $this->notifyUrl = 'https://8704a5024e8b.ngrok-free.app/api/webhooks/create'; //local testing, must update each time 
+            $this->notifyUrl = 'https://8704a5024e8b.ngrok-free.app/api/webhooks/create'; //local testing, must update each time
         } elseif (strpos($site_url, 'rishumitstg') !== false || strpos($site_url, 'azurewebsites.net') !== false) {
             $this->strapiEndpointRequest = 'https://be-rishumit.azurewebsites.net/api/requests';
             $this->notifyUrl = 'https://be-rishumit.azurewebsites.net/api/webhooks/create';
@@ -422,6 +422,27 @@ class Form
         // Apply employer details grouping only for the "Tax coordination" form
         if ($form_name === 'Tax coordination') {
             $request_data['employer_details'] = $this->extractEmployerDetails($fields);
+        }
+
+        // Apply Green Form specific processing
+        if ($form_name === 'Green Form') {
+            // Add green_radio and license_number at the beginning
+            if (isset($fields['green_radio']['value']) && !empty($fields['green_radio']['value'])) {
+                $request_data['green_radio'] = $fields['green_radio']['value'];
+            }
+            if (isset($fields['license_number']['value']) && !empty($fields['license_number']['value'])) {
+                $request_data['license_number'] = $fields['license_number']['value'];
+            }
+
+            // Check which of the 3 license options is chosen and add it
+            $license_options = ['issue_license_category', 'add_license_category', 'add_driving_permit'];
+
+            foreach ($license_options as $option) {
+                if (isset($fields[$option]['value']) && !empty($fields[$option]['value'])) {
+                    $request_data[$option] = $fields[$option]['value'];
+                    break; // Only one should be selected, so break after finding it
+                }
+            }
         }
 
         // Get non-employer fields
