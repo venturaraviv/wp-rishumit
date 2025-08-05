@@ -10,6 +10,7 @@ class Form
     private $strapiEndpointRequest;
     private $strapiToken;
     private $notifyUrl;
+    private $isProduction;
 
     public function __construct()
     {
@@ -18,12 +19,15 @@ class Form
         if (strpos($site_url, 'local') !== false) {
             $this->strapiEndpointRequest = 'http://localhost:1337/api/requests';
             $this->notifyUrl = 'https://8704a5024e8b.ngrok-free.app/api/webhooks/create'; //local testing, must update each time
+            $this->isProduction = false;
         } elseif (strpos($site_url, 'rishumitstg') !== false || strpos($site_url, 'azurewebsites.net') !== false) {
             $this->strapiEndpointRequest = 'https://be-rishumit.azurewebsites.net/api/requests';
             $this->notifyUrl = 'https://be-rishumit.azurewebsites.net/api/webhooks/create';
+            $this->isProduction = false;
         } else {
             $this->strapiEndpointRequest = 'https://be-rishumit-prod-f9e4fpfjebbdb0bq.israelcentral-01.azurewebsites.net/api/requests';
             $this->notifyUrl = 'https://be-rishumit-prod-f9e4fpfjebbdb0bq.israelcentral-01.azurewebsites.net/api/webhooks/create';
+            $this->isProduction = true;
         }
 
         $this->strapiToken = '479e3212fb5013aa56e0ca849364a719c02516eb7ed9ac4670729a8bae2c7b8c0005c1c6d7e775f8b60ea66942ea74f8113a5fc4e367d2add23df62e44cc716bc5b7f6eaf91c96e4fcd5da5aa92424b1c241093cc5365153fd6aa8f05c320b47382329f4087aec412df04e414cd4cdcc7fd63c83a9f092de1cbaf0cc7dbaa1df';
@@ -854,6 +858,35 @@ class Form
 
     private function createPaymentLink($full_name, $phone, $email, $form_name, $strapi_id)
     {
+        // For production, use direct payment URLs
+        if ($this->isProduction) {
+            $payment_urls = [
+                'ESTA' => 'https://meshulam.co.il/s/8970f3af-fb24-e275-dd1e-037e7692c428',
+                'Green Form' => 'https://meshulam.co.il/s/04e8e085-b32e-30cc-0136-d61b25b411f8',
+                'Income Tax Exemption' => 'https://meshulam.co.il/s/e8277735-1eae-1f8b-a101-602248f45909',
+                'Birth Name Registration' => 'https://meshulam.co.il/s/535db637-bf99-c5cd-ab1c-7ce14fab8512',
+                'Tax coordination' => 'https://meshulam.co.il/s/c697ab1b-3e6f-af97-1536-06d6cb104c52',
+                'IDF Certificates' => 'https://meshulam.co.il/quick_payment?b=bd67117032173048f8ca650ad18615b7',
+                'ID appendix' => 'https://meshulam.co.il/s/b11b43e4-645e-4d9c-86fb-e232a5b892af',
+                'Change Address' => 'https://meshulam.co.il/s/2ede72e5-2957-ec05-a9ad-92ce9a45b459',
+                'Registration Summary' => 'https://meshulam.co.il/s/10e0a10a-925b-2d5c-aab8-35a55fdc9593',
+                'Birth Certificate' => 'https://meshulam.co.il/s/9459aa72-a5f8-aac0-5505-14c54871aa4f',
+                'Death Certificate' => 'https://meshulam.co.il/quick_payment?b=a8c66d180b1549ad116976d069fe44cd',
+                'Tabu Service' => 'https://meshulam.co.il/quick_payment?b=120ad9d485df6757d8fb0abacfc66ce2'
+            ];
+
+            //for testing = 1 shekel
+            //https://meshulam.co.il/quick_payment?b=5e07431f82ad1513a07a6661f0180258
+
+            if (isset($payment_urls[$form_name])) {
+                error_log("Using production payment URL for $form_name: " . $payment_urls[$form_name]);
+                return $payment_urls[$form_name];
+            } else {
+                error_log("No production payment URL found for form: $form_name");
+                return site_url('/thank-you?id=' . $strapi_id . '&payment_pending=1');
+            }
+        }
+
         $endpoint = 'https://sandbox.meshulam.co.il/api/light/server/1.0/createPaymentProcess';
 
         // Debug logging
