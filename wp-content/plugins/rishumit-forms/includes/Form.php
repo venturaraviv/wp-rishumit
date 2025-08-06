@@ -17,7 +17,7 @@ class Form
 
         if (strpos($site_url, 'local') !== false) {
             $this->strapiEndpointRequest = 'http://localhost:1337/api/requests';
-            $this->notifyUrl = 'https://8704a5024e8b.ngrok-free.app/api/webhooks/create'; //local testing, must update each time
+            $this->notifyUrl = 'https://3b15ed42efbf.ngrok-free.app/api/webhooks/create'; //local testing, must update each time
         } elseif (strpos($site_url, 'rishumitstg') !== false || strpos($site_url, 'azurewebsites.net') !== false) {
             $this->strapiEndpointRequest = 'https://be-rishumit.azurewebsites.net/api/requests';
             $this->notifyUrl = 'https://be-rishumit.azurewebsites.net/api/webhooks/create';
@@ -896,7 +896,7 @@ class Form
             'userId' => '85eaf86f53661afe',
             'pageCode' => '247c6e7c16d7',
             'sum' => $this->getAmountByForm($form_name),
-            'successUrl' => site_url('/thank-you?id=' . $strapi_id),
+            'successUrl' => site_url('/thank-you?id=' . $strapi_id . '&form=' . urlencode($form_name)),
             'cancelUrl' => site_url('/payment-cancelled?id=' . $strapi_id),
             'notifyUrl' => $this->notifyUrl,
             'description' => 'Form: ' . $form_name . ' / ID: ' . $strapi_id,

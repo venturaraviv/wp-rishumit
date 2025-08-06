@@ -27,7 +27,7 @@ $payment_pending = isset($_GET['payment_pending']) && $_GET['payment_pending'] =
             <p>לחץ על הכפתור למטה כדי להשלים את התשלום שלך.</p>
             <?php
             $payment_url = get_option('rishumit_payment_url_' . $order_id);
-            ?>
+        ?>
 
             <?php if ($payment_url): ?>
                 <a href="<?php echo esc_url($payment_url); ?>" class="payment-button">השלם תשלום</a>
@@ -65,5 +65,36 @@ $payment_pending = isset($_GET['payment_pending']) && $_GET['payment_pending'] =
         <?php endif; ?>
     </div>
 </div>
+
+<?php
+$form_name = isset($_GET['form']) ? urldecode($_GET['form']) : '';
+?>
+
+<script> //gtags
+  const formConversions = {
+    'Green Form': 'AW-16765175858/l5ZWCK_iiIIaELKQobo-',
+    'Death Certificate': 'AW-16765175858/NLP6CNDSxoEaELKQobo-',
+    'IDF Certificates': 'AW-16765175858/XO1qCLuphoEaELKQobo-',
+    'Registration Summary': 'AW-16765175858/nfpwCPiCiIIaELKQobo-',
+    'Change Address': 'AW-16765175858/oT9pCLKp6IIaELKQobo-',
+    'Birth Certificate': 'AW-16765175858/6A2ICKPs5IMaELKQobo-',
+    'ID appendix': 'AW-16765175858/R3mYCNeEoLsaELKQobo-',
+    'ESTA': 'AW-16765175858/IQfeCLiE1boaELKQobo-',
+    'Income Tax Exemption': 'AW-16765175858/4P8YCOSQyYMaELKQobo-',
+    'Tabu Service': 'AW-16765175858/b9wVCNzJrf4ZELKQobo-',
+    'Tax coordination': 'AW-16765175858/L_DhCIjd8v4ZELKQobo-'
+  };
+
+  const formName = <?php echo json_encode($form_name); ?>;
+  if (formName && formConversions[formName]) {
+    gtag('event', 'conversion', {
+      send_to: formConversions[formName]
+    });
+    console.log("✅ Sent conversion for form:", formName);
+  } else {
+    console.warn("⚠️ No conversion ID for form:", formName);
+  }
+</script>
+
 
 <?php get_footer(); ?>
