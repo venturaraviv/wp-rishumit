@@ -24,7 +24,6 @@ class Form
         } else {
             $this->strapiEndpointRequest = 'https://be-rishumit-prod-f9e4fpfjebbdb0bq.israelcentral-01.azurewebsites.net/api/requests';
             $this->notifyUrl = 'https://be-rishumit-prod-f9e4fpfjebbdb0bq.israelcentral-01.azurewebsites.net/api/webhooks/create';
-            $this->isProduction = true;
         }
 
         $this->strapiToken = '479e3212fb5013aa56e0ca849364a719c02516eb7ed9ac4670729a8bae2c7b8c0005c1c6d7e775f8b60ea66942ea74f8113a5fc4e367d2add23df62e44cc716bc5b7f6eaf91c96e4fcd5da5aa92424b1c241093cc5365153fd6aa8f05c320b47382329f4087aec412df04e414cd4cdcc7fd63c83a9f092de1cbaf0cc7dbaa1df';
@@ -855,7 +854,8 @@ class Form
 
     private function createPaymentLink($full_name, $phone, $email, $form_name, $strapi_id)
     {
-        $endpoint = 'https://sandbox.meshulam.co.il/api/light/server/1.0/createPaymentProcess';
+        $endpoint = 'https://sandbox.meshulam.co.il/api/light/server/1.0/createPaymentProcess'; //dev 
+        $endpoint = 'https://meshulam.co.il/api/light/server/1.0/createPaymentProcess'; //prod
 
         // Debug logging
         error_log("Payment Link Creation - Name: $full_name, Phone: $phone, Email: $email, Form: $form_name, ID: $strapi_id");
@@ -893,8 +893,10 @@ class Form
         }
 
         $params = [
-            'userId' => '85eaf86f53661afe',
-            'pageCode' => '247c6e7c16d7',
+            'userId' => 'f48a1e81504cf79c', //prod
+            'pageCode' => '62463d062005', //prod 
+            // 'userId' => '85eaf86f53661afe', //dev 
+            // 'pageCode' => '247c6e7c16d7', //dev
             'sum' => $this->getAmountByForm($form_name),
             'successUrl' => site_url('/thank-you?id=' . $strapi_id . '&form=' . urlencode($form_name)),
             'cancelUrl' => site_url('/payment-cancelled?id=' . $strapi_id),
