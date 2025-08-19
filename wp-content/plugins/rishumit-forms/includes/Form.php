@@ -32,12 +32,80 @@ class Form
 
     public function register()
     {
-        // Register hooks for form validation and submission
-        add_action('elementor_pro/forms/new_record', [$this, 'handleForms'], 10, 2);
-        add_action('elementor_pro/forms/validation', [$this, 'validation'], 10, 2);
+        // prevent double-registration
+        static $registered = false;
+        if ($registered) {
+            return;
+        }
+        $registered = true;
 
-        add_action('elementor_pro/forms/validation/tel', [$this, 'validatePhoneField'], 10, 3);
-        add_action('elementor_pro/forms/validation/number', [$this, 'validateIsraeliID'], 10, 3);
+        // allow-list of forms your handler SHOULD process
+        $allowed = [
+            'ESTA',
+            'Green Form',
+            'Income Tax Exemption',
+            'Birth Name Registration',
+            'Tax coordination',
+            'IDF Certificates',
+            'ID appendix',
+            'Change Address',
+            'Registration Summary',
+            'Birth Certificate',
+            'Death Certificate',
+            'Tabu Service',
+        ];
+
+        // Function to check if form should be processed
+        $isAllowed = function ($record) use ($allowed) {
+            $name = $record->get_form_settings('form_name') ?? '';
+
+            // Log for debugging
+            error_log("Form submission detected: '$name'");
+
+            $is_allowed = in_array($name, $allowed, true);
+            error_log("Form '$name' is " . ($is_allowed ? 'ALLOWED' : 'SKIPPED'));
+
+            return $is_allowed;
+        };
+
+        // remove any previous plain bindings to methods (in case this ran earlier)
+        remove_action('elementor_pro/forms/new_record', [$this, 'handleForms'], 10);
+        remove_action('elementor_pro/forms/validation', [$this, 'validation'], 10);
+        remove_action('elementor_pro/forms/validation/tel', [$this, 'validatePhoneField'], 10);
+        remove_action('elementor_pro/forms/validation/number', [$this, 'validateIsraeliID'], 10);
+
+        // reattach via wrappers that skip non-allowed forms
+        add_action('elementor_pro/forms/new_record', function ($record, $handler) use ($isAllowed) {
+            if (!$isAllowed($record)) {
+                error_log("Skipping form processing for: " . ($record->get_form_settings('form_name') ?? 'Unknown'));
+                return; // Completely skip - let WordPress handle it normally
+            }
+            $this->handleForms($record, $handler);
+        }, 10, 2);
+
+        add_action('elementor_pro/forms/validation', function ($record, $ajax_handler) use ($isAllowed) {
+            if (!$isAllowed($record)) {
+                error_log("Skipping form validation for: " . ($record->get_form_settings('form_name') ?? 'Unknown'));
+                return; // Completely skip validation
+            }
+            $this->validation($record, $ajax_handler);
+        }, 10, 2);
+
+        add_action('elementor_pro/forms/validation/tel', function ($field, $record, $ajax_handler) use ($isAllowed) {
+            if (!$isAllowed($record)) {
+                error_log("Skipping phone validation for: " . ($record->get_form_settings('form_name') ?? 'Unknown'));
+                return; // Completely skip phone validation
+            }
+            $this->validatePhoneField($field, $record, $ajax_handler);
+        }, 10, 3);
+
+        add_action('elementor_pro/forms/validation/number', function ($field, $record, $ajax_handler) use ($isAllowed) {
+            if (!$isAllowed($record)) {
+                error_log("Skipping ID validation for: " . ($record->get_form_settings('form_name') ?? 'Unknown'));
+                return; // Completely skip ID validation
+            }
+            $this->validateIsraeliID($field, $record, $ajax_handler);
+        }, 10, 3);
     }
 
     public function validatePhoneField($field, $record, $ajax_handler)
@@ -854,7 +922,7 @@ class Form
 
     private function createPaymentLink($full_name, $phone, $email, $form_name, $strapi_id)
     {
-        $endpoint = 'https://sandbox.meshulam.co.il/api/light/server/1.0/createPaymentProcess'; //dev 
+        // $endpoint = 'https://sandbox.meshulam.co.il/api/light/server/1.0/createPaymentProcess'; //dev
         $endpoint = 'https://meshulam.co.il/api/light/server/1.0/createPaymentProcess'; //prod
 
         // Debug logging
@@ -894,8 +962,8 @@ class Form
 
         $params = [
             'userId' => 'f48a1e81504cf79c', //prod
-            'pageCode' => '62463d062005', //prod 
-            // 'userId' => '85eaf86f53661afe', //dev 
+            'pageCode' => '62463d062005', //prod
+            // 'userId' => '85eaf86f53661afe', //dev
             // 'pageCode' => '247c6e7c16d7', //dev
             'sum' => $this->getAmountByForm($form_name),
             'successUrl' => site_url('/thank-you?id=' . $strapi_id . '&form=' . urlencode($form_name)),
