@@ -17,7 +17,7 @@ class Form
 
         if (strpos($site_url, 'local') !== false) {
             $this->strapiEndpointRequest = 'http://localhost:1337/api/requests';
-            $this->notifyUrl = 'https://3b15ed42efbf.ngrok-free.app/api/webhooks/create'; //local testing, must update each time
+            $this->notifyUrl = 'https://a89bf1fe34ae.ngrok-free.app/api/webhooks/create'; //local testing, must update each time
         } elseif (strpos($site_url, 'rishumitstg') !== false || strpos($site_url, 'azurewebsites.net') !== false) {
             $this->strapiEndpointRequest = 'https://be-rishumit.azurewebsites.net/api/requests';
             $this->notifyUrl = 'https://be-rishumit.azurewebsites.net/api/webhooks/create';
@@ -106,6 +106,43 @@ class Form
             }
             $this->validateIsraeliID($field, $record, $ajax_handler);
         }, 10, 3);
+
+        add_action('wp_ajax_create_payment_process', [$this, 'ajaxCreatePaymentProcess']);
+        add_action('wp_ajax_nopriv_create_payment_process', [$this, 'ajaxCreatePaymentProcess']);
+    }
+
+    public function ajaxCreatePaymentProcess()
+    {
+        try {
+            if (!wp_verify_nonce($_POST['nonce'], 'payment_process_nonce')) {
+                wp_die('Security check failed');
+            }
+
+            $payment_id = intval($_POST['payment_id']);
+
+            // Get payment data from transient
+            $payment_data = get_transient('payment_data_' . $payment_id);
+
+            if (!$payment_data) {
+                wp_send_json(['success' => false, 'message' => 'Payment data expired']);
+                return;
+            }
+
+            $result = $this->createPaymentProcess(
+                $payment_data['full_name'],
+                $payment_data['phone'],
+                $payment_data['email'],
+                $payment_data['form_name'],
+                $payment_data['strapi_id']
+            );
+
+            // Clean up transient
+            delete_transient('payment_data_' . $payment_id);
+
+            wp_send_json($result);
+        } catch (Exception $e) {
+            wp_send_json(['success' => false, 'message' => $e->getMessage()]);
+        }
     }
 
     public function validatePhoneField($field, $record, $ajax_handler)
@@ -322,9 +359,7 @@ class Form
                 $response_id = $strapi_response['data']['data']['id'];
             }
 
-            // IMPORTANT: Success handling with redirect
             if ($response_id > 0) {
-                // Get the form-specific payment URL
                 $user_phone = '';
                 if (isset($user['phone'])) {
                     $user_phone = $user['phone'];
@@ -333,56 +368,29 @@ class Form
                 } elseif (isset($fields['phone']['value'])) {
                     $user_phone = $fields['phone']['value'];
                 }
-                error_log("Phone being sent to payment gateway: $user_phone");
 
-                $redirect_url = $this->createPaymentLink(
-                    $user['שם פרטי'] . ' ' . ($user['שם משפחה'] ?? ''),
-                    $user_phone,
-                    $user['email'] ?? '',
-                    $form_name,
-                    $response_id
-                );
+                // Store payment data for frontend
+                $payment_data = [
+                    'strapi_id' => $response_id,
+                    'full_name' => $user['שם פרטי'] . ' ' . ($user['שם משפחה'] ?? ''),
+                    'phone' => $user_phone,
+                    'email' => $user['email'] ?? '',
+                    'form_name' => $form_name,
+                    'amount' => $this->getAmountByForm($form_name)
+                ];
 
-                update_option('rishumit_payment_url_' . $response_id, $redirect_url);
-                wp_schedule_single_event(time() + HOUR_IN_SECONDS * 24, 'rishumit_expire_payment_link', [$response_id]);
+                // Store in session/transient for frontend to access
+                set_transient('payment_data_' . $response_id, $payment_data, 300); // 5 minutes
 
-                // Log the redirect URL for debugging
-                error_log("Payment URL received from Meshulam: " . $redirect_url);
+                $handler->add_success_message(__("הטופס נשלח בהצלחה. מכין תשלום...", "rishumit-plugin"));
 
-                if (empty($redirect_url)) {
-                    error_log("Empty payment URL received, redirecting to default thank you page");
-                    $redirect_url = site_url('/thank-you?id=' . $response_id . '&payment_pending=1');
-                }
-
-                // Set a clear success status
-                $handler->add_success_message(__("הטופס נשלח בהצלחה. מעביר לדף תשלום...", "rishumit-plugin"));
-
-                // Force success status
-                if (method_exists($handler, 'set_success')) {
-                    $handler->set_success(true);
-                }
-
-                // Use Elementor's native redirect mechanism
                 if (method_exists($handler, 'add_response_data')) {
-                    $handler->add_response_data('redirect_url', $redirect_url);
-                    $handler->add_response_data('redirect_to', $redirect_url);
-                    $handler->add_response_data('success', true); // Explicitly set success
+                    $handler->add_response_data('show_payment', true);
+                    $handler->add_response_data('payment_id', $response_id);
+                    $handler->add_response_data('success', true);
                 }
 
-                // Add JavaScript redirect as fallback
-                add_action('wp_footer', function () use ($redirect_url) {
-                    ?>
-        <script type="text/javascript">
-        setTimeout(function() {
-            window.location.href = "<?php echo $redirect_url; ?>";
-        }, 1000);
-        </script>
-        <?php
-                }, 99);
-                error_log("SUCCESS BLOCK COMPLETED - Should show success message and redirect");
-
-                return true; // Make sure to return true for success
-
+                return true;
             } else {
                 // Standard success message if no ID was obtained
                 error_log("NO RESPONSE ID - Response ID was: " . var_export($response_id, true));
@@ -920,51 +928,38 @@ class Form
         );
     }
 
-    private function createPaymentLink($full_name, $phone, $email, $form_name, $strapi_id)
+    // REPLACE your existing createPaymentLink function with this:
+    private function createPaymentProcess($full_name, $phone, $email, $form_name, $strapi_id)
     {
-        // $endpoint = 'https://sandbox.meshulam.co.il/api/light/server/1.0/createPaymentProcess'; //dev
-        $endpoint = 'https://meshulam.co.il/api/light/server/1.0/createPaymentProcess'; //prod
+        $endpoint = 'https://sandbox.meshulam.co.il/api/light/server/1.0/createPaymentProcess';
 
-        // Debug logging
-        error_log("Payment Link Creation - Name: $full_name, Phone: $phone, Email: $email, Form: $form_name, ID: $strapi_id");
+        error_log("SDK Payment Process - Name: $full_name, Phone: $phone, Email: $email, Form: $form_name, ID: $strapi_id");
 
-        // Improved phone validation and formatting for Israeli numbers
         if (!empty($phone)) {
-            // Strip all non-numeric characters
             $phone = preg_replace('/[^0-9]/', '', $phone);
-
-            // Ensure it starts with leading zero for Israeli format
             if (strlen($phone) == 9 && substr($phone, 0, 1) != '0') {
                 $phone = '0' . $phone;
             }
-
-            // If still invalid length after formatting, use a fallback
             if (strlen($phone) < 9 || strlen($phone) > 12) {
                 error_log("Phone number had invalid length after formatting: $phone. Using fallback.");
-                $phone = '0500000000'; // Fallback phone for testing
+                $phone = '0500000000';
             }
         } else {
-            // If empty, use fallback phone
             error_log("Phone was empty. Using fallback.");
-            $phone = '0500000000'; // Fallback phone for testing
+            $phone = '0500000000';
         }
 
-        // Name validation - ensure it has at least first and last name
         if (empty(trim($full_name)) || strlen(trim($full_name)) < 3) {
             error_log("Name invalid for Meshulam payment: '$full_name'");
-            $full_name = "Customer " . $strapi_id; // Use a fallback name
+            $full_name = "Customer " . $strapi_id;
         }
-
-        // Limit name length to avoid issues
         if (strlen($full_name) > 50) {
             $full_name = substr($full_name, 0, 47) . '...';
         }
 
         $params = [
-            'userId' => 'f48a1e81504cf79c', //prod
-            'pageCode' => '62463d062005', //prod
-            // 'userId' => '85eaf86f53661afe', //dev
-            // 'pageCode' => '247c6e7c16d7', //dev
+            'userId' => '4ec1d595ae764243',
+            'pageCode' => 'c34d1f4a546f', // Must be configured for SDK mode
             'sum' => $this->getAmountByForm($form_name),
             'successUrl' => site_url('/thank-you?id=' . $strapi_id . '&form=' . urlencode($form_name)),
             'cancelUrl' => site_url('/payment-cancelled?id=' . $strapi_id),
@@ -977,33 +972,36 @@ class Form
             'id' => $strapi_id,
         ];
 
-        // Add more detailed logging
         error_log("Sending to Meshulam with params: " . print_r($params, true));
 
         $response = wp_remote_post($endpoint, [
             'method' => 'POST',
             'body' => $params,
-            'timeout' => 45,  // Increased timeout
+            'timeout' => 45,
         ]);
 
         if (is_wp_error($response)) {
             error_log("Meshulam error: " . $response->get_error_message());
-            return false;
+            return ['success' => false, 'message' => $response->get_error_message()];
         }
 
         $body = json_decode(wp_remote_retrieve_body($response), true);
         error_log("Decoded Meshulam response: " . print_r($body, true));
 
-        // Better error handling
         if (!isset($body['status']) || $body['status'] !== 1) {
             error_log("Meshulam payment creation failed: " .
                 (isset($body['err']['message']) ? $body['err']['message'] : 'Unknown error'));
-            // Return a reliable fallback URL if payment creation fails
-            return site_url('/thank-you?id=' . $strapi_id . '&payment_pending=1');
+            return ['success' => false, 'message' => 'Payment process creation failed'];
         }
 
-        return isset($body['data']['url']) ? $body['data']['url'] : false;
+        return [
+            'success' => true,
+            'authCode' => $body['data']['authCode'] ?? null,
+            'processId' => $body['data']['processId'] ?? null,
+            'processToken' => $body['data']['processToken'] ?? null
+        ];
     }
+
 
     private function getAmountByForm($form_name)
     {
