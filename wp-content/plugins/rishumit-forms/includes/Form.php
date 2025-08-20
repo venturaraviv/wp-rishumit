@@ -136,6 +136,11 @@ class Form
                 $payment_data['strapi_id']
             );
 
+            // Add the Strapi ID to the response
+            if ($result['success']) {
+                $result['strapiId'] = $payment_data['strapi_id'];
+            }
+
             // Clean up transient
             delete_transient('payment_data_' . $payment_id);
 
@@ -958,8 +963,8 @@ class Form
         }
 
         $params = [
-            'userId' => '4ec1d595ae764243',
-            'pageCode' => 'c34d1f4a546f', // Must be configured for SDK mode
+            'userId' => '85eaf86f53661afe',
+            'pageCode' => 'de204c9b408d', // Must be configured for SDK mode
             'sum' => $this->getAmountByForm($form_name),
             'successUrl' => site_url('/thank-you?id=' . $strapi_id . '&form=' . urlencode($form_name)),
             'cancelUrl' => site_url('/payment-cancelled?id=' . $strapi_id),

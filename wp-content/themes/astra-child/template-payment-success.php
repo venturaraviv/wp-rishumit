@@ -4,7 +4,43 @@ get_header();
 
 $order_id = isset($_GET['id']) ? intval($_GET['id']) : 0;
 $payment_pending = isset($_GET['payment_pending']) && $_GET['payment_pending'] == '1';
+
+// Add these for SDK payments without breaking existing code
+$confirmation = isset($_GET['confirmation']) ? sanitize_text_field($_GET['confirmation']) : '';
+$method = isset($_GET['method']) ? sanitize_text_field($_GET['method']) : '';
 ?>
+
+<!-- JSON-LD Structured Data -->
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "WebPage",
+  "name": "תודה על פנייתך - רישומית אונליין בע\"מ",
+  "url": "https://rishumit.online/thank-you",
+  "description": "תודה על פנייתך או בקשתך לביטול. ניצור עמך קשר בהקדם.",
+  "about": "עמוד זה נועד להודות למשתמשים שיצרו קשר או הגישו בקשת ביטול באתר.",
+  "publisher": {
+    "@type": "Organization",
+    "name": "רישומית אונליין בע\"מ",
+    "url": "https://rishumit.online",
+    "logo": "https://rishumit.online/wp-content/uploads/2024/12/1.png",
+    "contactPoint": {
+      "@type": "ContactPoint",
+      "telephone": "+972-54-8021224",
+      "contactType": "שירות לקוחות",
+      "email": "service@rishumit.online",
+      "availableLanguage": ["Hebrew", "English", "Russian"]
+    },
+    "address": {
+      "@type": "PostalAddress",
+      "streetAddress": "תוצרת הארץ 3, מגדלי ב.ס.ר",
+      "addressLocality": "פתח תקווה",
+      "addressRegion": "מרכז",
+      "addressCountry": "IL"
+    }
+  }
+}
+</script>
 
 <div class="payment-success-container" style="padding: 40px; max-width: 800px; margin: auto;">
     <h1>תודה על הזמנתך!</h1>
@@ -16,6 +52,14 @@ $payment_pending = isset($_GET['payment_pending']) && $_GET['payment_pending'] =
             <p>הטופס שלך נשלח בהצלחה והתשלום התקבל. הבקשה שלך נמצאת בטיפול.</p>
         <?php endif; ?>
         <p>מספר ההזמנה שלך: <strong><?php echo esc_html($order_id); ?></strong></p>
+        
+        <?php if (!empty($confirmation)): ?>
+            <p>מספר אישור התשלום: <strong><?php echo esc_html($confirmation); ?></strong></p>
+        <?php endif; ?>
+        
+        <?php if (!empty($method)): ?>
+            <p>אמצעי תשלום: <strong><?php echo esc_html($method); ?></strong></p>
+        <?php endif; ?>
     </div>
 
     <?php if ($payment_pending): ?>
@@ -95,6 +139,5 @@ $form_name = isset($_GET['form']) ? urldecode($_GET['form']) : '';
     console.warn("⚠️ No conversion ID for form:", formName);
   }
 </script>
-
 
 <?php get_footer(); ?>

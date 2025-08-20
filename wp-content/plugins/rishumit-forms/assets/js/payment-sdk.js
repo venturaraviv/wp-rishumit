@@ -166,6 +166,9 @@ class RishumitPaymentSDK {
       if (response.success && response.authCode) {
         console.log("Payment process created, authCode:", response.authCode);
 
+        // Store the Strapi ID for later use in success handler
+        this.currentStrapiId = response.strapiId || paymentId;
+
         if (typeof growPayment !== "undefined") {
           console.log("Calling growPayment.renderPaymentOptions");
           growPayment.renderPaymentOptions(response.authCode);
@@ -205,9 +208,23 @@ class RishumitPaymentSDK {
   handlePaymentSuccess(response) {
     this.paymentInProgress = false;
     this.hideLoader();
+
+    console.log("Payment completed successfully:", response);
+
     const confirmationNumber = response.data?.confirmation_number || "";
     const paymentMethod = response.data?.payment_method || "";
-    window.location.href = `/thank-you?confirmation=${confirmationNumber}&method=${paymentMethod}`;
+
+    // Get the Strapi ID from the current payment process
+    // You'll need to store this when creating the payment
+    const strapiId = this.currentStrapiId || "";
+
+    // Build URL with all parameters
+    let redirectUrl = `/thank-you?confirmation=${confirmationNumber}&method=${paymentMethod}`;
+    if (strapiId) {
+      redirectUrl += `&id=${strapiId}`;
+    }
+
+    window.location.href = redirectUrl;
   }
 
   handlePaymentFailure(response) {
