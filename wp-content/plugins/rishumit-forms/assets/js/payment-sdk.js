@@ -77,6 +77,8 @@ class RishumitPaymentSDK {
       return;
     }
 
+    this.paymentInProgress = true;
+
     if (this.sdkLoaded) {
       console.log("SDK already loaded, processing payment");
       this.processPayment(paymentId);
@@ -150,12 +152,6 @@ class RishumitPaymentSDK {
   async processPayment(paymentId) {
     console.log("processPayment called with ID:", paymentId);
 
-    if (this.paymentInProgress) {
-      console.log("Payment already in progress");
-      return;
-    }
-
-    this.paymentInProgress = true;
     this.showLoader();
 
     try {
