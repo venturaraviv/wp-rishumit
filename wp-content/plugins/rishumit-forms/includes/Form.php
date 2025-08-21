@@ -6,29 +6,46 @@ use Exception;
 
 class Form
 {
-    private $strapiEndpointUser;
     private $strapiEndpointRequest;
     private $strapiToken;
     private $notifyUrl;
+    private bool $isProd = false;
 
     public function __construct()
     {
         $site_url = get_site_url();
+        $host = parse_url($site_url, PHP_URL_HOST) ?: '';
 
-        if (strpos($site_url, 'local') !== false) {
+        if (strpos($host, 'local') !== false) {
+            $this->isProd = false;
             $this->strapiEndpointRequest = 'http://localhost:1337/api/requests';
-            $this->notifyUrl = 'https://a89bf1fe34ae.ngrok-free.app/api/webhooks/create'; //local testing, must update each time
-        } elseif (strpos($site_url, 'rishumitstg') !== false || strpos($site_url, 'azurewebsites.net') !== false) {
+            $this->notifyUrl = 'https://a89bf1fe34ae.ngrok-free.app/api/webhooks/create'; // local
+        } elseif (strpos($host, 'rishumitstg') !== false || strpos($host, 'azurewebsites.net') !== false) {
+            $this->isProd = false;
+            $this->strapiEndpointRequest = 'https://be-rishumit.azurewebsites.net/api/requests';
+            $this->notifyUrl = 'https://be-rishumit.azurewebsites.net/api/webhooks/create'; // staging
+        } elseif (in_array($host, ['rishumit.online', 'rishumit1.wpengine.com'], true)) {
+            $this->isProd = true;
+            $this->strapiEndpointRequest = 'https://be-rishumit-prod-f9e4fpfjebbdb0bq.israelcentral-01.azurewebsites.net/api/requests';
+            $this->notifyUrl = 'https://be-rishumit-prod-f9e4fpfjebbdb0bq.israelcentral-01.azurewebsites.net/api/webhooks/create'; // prod
+        } else {
+            // unknown host → safer default
+            $this->isProd = false;
             $this->strapiEndpointRequest = 'https://be-rishumit.azurewebsites.net/api/requests';
             $this->notifyUrl = 'https://be-rishumit.azurewebsites.net/api/webhooks/create';
-        } else {
-            $this->strapiEndpointRequest = 'https://be-rishumit-prod-f9e4fpfjebbdb0bq.israelcentral-01.azurewebsites.net/api/requests';
-            $this->notifyUrl = 'https://be-rishumit-prod-f9e4fpfjebbdb0bq.israelcentral-01.azurewebsites.net/api/webhooks/create';
         }
 
-        $this->strapiToken = '479e3212fb5013aa56e0ca849364a719c02516eb7ed9ac4670729a8bae2c7b8c0005c1c6d7e775f8b60ea66942ea74f8113a5fc4e367d2add23df62e44cc716bc5b7f6eaf91c96e4fcd5da5aa92424b1c241093cc5365153fd6aa8f05c320b47382329f4087aec412df04e414cd4cdcc7fd63c83a9f092de1cbaf0cc7dbaa1df';
-        // $this->strapiToken = '';
+        // Load Strapi token from wp-config.php
+        if (defined('STRAPI_API_TOKEN')) {
+            $this->strapiToken = STRAPI_API_TOKEN;
+        } else {
+            $this->strapiToken = '';
+            error_log('⚠ STRAPI_API_TOKEN not defined in wp-config.php');
+        }
+
+        error_log('Env: '.($this->isProd ? 'PROD' : 'NON-PROD').' host='.$host);
     }
+
 
     public function register()
     {
@@ -530,7 +547,7 @@ class Form
         $additional_fields = $this->extractNonEmployerFields($fields);
 
         // Transform field names for "registration summary" form
-        if ($form_name === 'registration summary') {
+        if (strcasecmp($form_name, 'Registration Summary') === 0) {
             if (isset($additional_fields['שם משפחה'])) {
                 $additional_fields['שם משפחה של הנבדק'] = $additional_fields['שם משפחה'];
                 unset($additional_fields['שם משפחה']);
@@ -648,7 +665,7 @@ class Form
                 'headers' => $headers,
                 'body'    => $json_data,
                 'timeout' => 45, // Increase timeout for potential slow responses
-                'sslverify' => false // Try disabling SSL verification if HTTPS issues occur
+                'sslverify' => $this->isProd ? true : false,
             ]);
 
             if (is_wp_error($response)) {
@@ -909,7 +926,7 @@ class Form
         $log .= "\n=== TESTING STRAPI CONNECTION ===\n";
         $test_response = wp_remote_get($this->strapiEndpointRequest, [
             'headers' => [
-                'Authorization' => 'Bearer 479e3212fb5013aa56e0ca849364a719c02516eb7ed9ac4670729a8bae2c7b8c0005c1c6d7e775f8b60ea66942ea74f8113a5fc4e367d2add23df62e44cc716bc5b7f6eaf91c96e4fcd5da5aa92424b1c241093cc5365153fd6aa8f05c320b47382329f4087aec412df04e414cd4cdcc7fd63c83a9f092de1cbaf0cc7dbaa1df',
+                'Authorization' => !empty($this->strapiToken) ? ('Bearer '.$this->strapiToken) : null,
             ],
             'timeout' => 30
         ]);
@@ -936,7 +953,9 @@ class Form
     // REPLACE your existing createPaymentLink function with this:
     private function createPaymentProcess($full_name, $phone, $email, $form_name, $strapi_id)
     {
-        $endpoint = 'https://sandbox.meshulam.co.il/api/light/server/1.0/createPaymentProcess';
+        $endpoint = $this->isProd
+            ? 'https://meshulam.co.il/api/light/server/1.0/createPaymentProcess'
+            : 'https://sandbox.meshulam.co.il/api/light/server/1.0/createPaymentProcess';
 
         error_log("SDK Payment Process - Name: $full_name, Phone: $phone, Email: $email, Form: $form_name, ID: $strapi_id");
 
@@ -962,9 +981,20 @@ class Form
             $full_name = substr($full_name, 0, 47) . '...';
         }
 
+        $userId = '';
+        $pageCode = '';
+
+        if ($this->isProd) {
+            $userId = 'xxxxx'; //fill with real one from Grow Team
+            $pageCode = 'xxxxx'; //fill with real one from Grow Team
+        } else {
+            $userId = '85eaf86f53661afe';
+            $pageCode = 'de204c9b408d';
+        }
+
         $params = [
-            'userId' => '85eaf86f53661afe',
-            'pageCode' => 'de204c9b408d', // Must be configured for SDK mode
+            'userId' => $userId,
+            'pageCode' => $pageCode,
             'sum' => $this->getAmountByForm($form_name),
             'successUrl' => site_url('/thank-you?id=' . $strapi_id . '&form=' . urlencode($form_name)),
             'cancelUrl' => site_url('/payment-cancelled?id=' . $strapi_id),
