@@ -78,6 +78,15 @@ function rishumit_enqueue_payment_assets()
         // Get plugin URL
         $plugin_url = plugin_dir_url(__FILE__);
 
+        // Enqueue Apple Pay SDK FIRST
+        wp_enqueue_script(
+            'apple-pay-sdk',
+            'https://meshulam.co.il/_media/js/apple_pay_sdk/sdk.min.js',
+            [],
+            null,
+            false // Load in header
+        );
+
         // Enqueue payment SDK CSS
         wp_enqueue_style(
             'rishumit-payment-sdk',
@@ -90,7 +99,7 @@ function rishumit_enqueue_payment_assets()
         wp_enqueue_script(
             'rishumit-payment-sdk',
             $plugin_url . 'assets/js/payment-sdk.js',
-            ['jquery'],
+            ['jquery', 'apple-pay-sdk'], // Add dependency on Apple Pay SDK
             '1.0.0',
             true
         );
