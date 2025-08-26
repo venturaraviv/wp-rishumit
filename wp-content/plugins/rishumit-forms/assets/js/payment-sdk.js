@@ -108,7 +108,7 @@ class RishumitPaymentSDK {
   configureSDK() {
     console.log("Configuring Meshulam SDK...");
     const config = {
-      environment: "DEV",
+      environment: "PRODUCTION",
       version: 1,
       events: {
         onSuccess: (response) => {
