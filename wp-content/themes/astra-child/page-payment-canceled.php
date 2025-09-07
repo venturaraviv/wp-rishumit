@@ -21,7 +21,7 @@ $order_id = isset($_GET['id']) ? intval($_GET['id']) : 0;
             <p>לחץ על הכפתור למטה כדי להשלים את התשלום שלך.</p>
             <?php
             $payment_url = get_option('rishumit_payment_url_' . $order_id);
-            ?>
+?>
 
             <?php if ($payment_url): ?>
                 <a href="<?php echo esc_url($payment_url); ?>" class="payment-button">השלם תשלום</a>
@@ -44,6 +44,37 @@ $order_id = isset($_GET['id']) ? intval($_GET['id']) : 0;
         <p>שים לב: הבקשה שלך לא תטופל עד להשלמת התשלום.</p>
     </div>
 </div>
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "WebPage",
+  "name": "תשלום נכשל - רישומית אונליין בע\"מ",
+  "url": "https://rishumit.online/payment-cancelled",
+  "description": "עמוד תשלום נכשל של רישומית אונליין בע\"מ אליו מגיעים משתמשים במקרה שבו העסקה לא הושלמה בהצלחה.",
+  "about": "עמוד זה מסביר למשתמש כי פעולת התשלום לא הושלמה ומציע לחזור ולנסות שוב או ליצור קשר עם שירות הלקוחות לקבלת סיוע.",
+  "publisher": {
+    "@type": "Organization",
+    "name": "רישומית אונליין בע\"מ",
+    "url": "https://rishumit.online",
+    "logo": "https://rishumit.online/wp-content/uploads/2024/12/1.png",
+    "contactPoint": {
+      "@type": "ContactPoint",
+      "telephone": "+972-54-8021224",
+      "contactType": "שירות לקוחות",
+      "email": "service@rishumit.online",
+      "availableLanguage": ["Hebrew", "English", "Russian"]
+    },
+    "address": {
+      "@type": "PostalAddress",
+      "streetAddress": "תוצרת הארץ 3, מגדלי ב.ס.ר",
+      "addressLocality": "פתח תקווה",
+      "addressRegion": "מרכז",
+      "addressCountry": "IL"
+    }
+  }
+}
+</script>
 
 <?php get_footer(); ?>
 
