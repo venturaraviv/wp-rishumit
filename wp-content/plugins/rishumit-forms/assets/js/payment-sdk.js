@@ -1,8 +1,11 @@
 class RishumitPaymentSDK {
   constructor() {
     this.sdkLoaded = false;
+    this.sdkInitialized = false; // Track if SDK is fully initialized
     this.paymentInProgress = false;
-    this.paymentProcessed = new Set(); // Track processed payment IDs
+    this.paymentProcessed = new Set();
+    this.initializationRetries = 0;
+    this.maxRetries = 3;
     this.init();
   }
 
@@ -23,7 +26,6 @@ class RishumitPaymentSDK {
   bindFormEvents() {
     console.log("Binding form events...");
 
-    // Only use the most reliable method - ajaxSuccess
     jQuery(document).ajaxSuccess((event, xhr, settings) => {
       if (
         settings.url &&
@@ -33,7 +35,6 @@ class RishumitPaymentSDK {
         try {
           const response = JSON.parse(xhr.responseText);
 
-          // Check for payment trigger in various response structures
           let paymentData = null;
           if (response?.data?.data?.show_payment) {
             paymentData = response.data.data;
@@ -48,7 +49,6 @@ class RishumitPaymentSDK {
             paymentData.show_payment &&
             paymentData.payment_id
           ) {
-            // Prevent duplicate processing
             if (!this.paymentProcessed.has(paymentData.payment_id)) {
               console.log("PAYMENT TRIGGER DETECTED:", paymentData);
               this.paymentProcessed.add(paymentData.payment_id);
@@ -79,9 +79,17 @@ class RishumitPaymentSDK {
 
     this.paymentInProgress = true;
 
-    if (this.sdkLoaded) {
-      console.log("SDK already loaded, processing payment");
+    if (this.sdkLoaded && this.sdkInitialized) {
+      console.log("SDK already loaded and initialized, processing payment");
       this.processPayment(paymentId);
+      return;
+    }
+
+    if (this.sdkLoaded && !this.sdkInitialized) {
+      console.log("SDK loaded but not initialized, configuring...");
+      this.configureSDK(() => {
+        this.processPayment(paymentId);
+      });
       return;
     }
 
@@ -90,23 +98,51 @@ class RishumitPaymentSDK {
     script.type = "text/javascript";
     script.async = true;
     script.src = "https://cdn.meshulam.co.il/sdk/gs.min.js";
+
     script.onload = () => {
       console.log("Meshulam SDK loaded successfully");
       this.sdkLoaded = true;
-      this.configureSDK();
-      this.processPayment(paymentId);
+
+      // Add a small delay to ensure the SDK is fully ready
+      setTimeout(() => {
+        this.configureSDK(() => {
+          this.processPayment(paymentId);
+        });
+      }, 100);
     };
+
     script.onerror = () => {
       console.error("Failed to load Meshulam SDK");
       this.showError("שגיאה בטעינת מערכת התשלומים");
+      this.paymentInProgress = false;
     };
 
     const firstScript = document.getElementsByTagName("script")[0];
     firstScript.parentNode.insertBefore(script, firstScript);
   }
 
-  configureSDK() {
+  configureSDK(callback) {
     console.log("Configuring Meshulam SDK...");
+
+    // Check if growPayment is available
+    if (typeof growPayment === "undefined") {
+      console.error("growPayment object not available");
+      if (this.initializationRetries < this.maxRetries) {
+        this.initializationRetries++;
+        console.log(
+          `Retrying SDK initialization (${this.initializationRetries}/${this.maxRetries})...`
+        );
+        setTimeout(() => {
+          this.configureSDK(callback);
+        }, 500);
+        return;
+      } else {
+        this.showError("שגיאה בטעינת מערכת התשלומים - SDK לא זמין");
+        this.paymentInProgress = false;
+        return;
+      }
+    }
+
     const config = {
       environment: "PRODUCTION",
       version: 1,
@@ -141,11 +177,30 @@ class RishumitPaymentSDK {
       },
     };
 
-    if (typeof growPayment !== "undefined") {
+    try {
       growPayment.init(config);
       console.log("Meshulam SDK configured successfully");
-    } else {
-      console.error("growPayment object not available");
+      this.sdkInitialized = true;
+      this.initializationRetries = 0; // Reset counter on success
+
+      // Wait a bit more to ensure wallet is fully initialized
+      setTimeout(() => {
+        if (callback) callback();
+      }, 200);
+    } catch (error) {
+      console.error("Error configuring SDK:", error);
+      if (this.initializationRetries < this.maxRetries) {
+        this.initializationRetries++;
+        console.log(
+          `Retrying SDK configuration (${this.initializationRetries}/${this.maxRetries})...`
+        );
+        setTimeout(() => {
+          this.configureSDK(callback);
+        }, 1000);
+      } else {
+        this.showError("שגיאה בהגדרת מערכת התשלומים");
+        this.paymentInProgress = false;
+      }
     }
   }
 
@@ -161,15 +216,39 @@ class RishumitPaymentSDK {
 
       if (response.success && response.authCode) {
         console.log("Payment process created, authCode:", response.authCode);
-
-        // Store the Strapi ID for later use in success handler
         this.currentStrapiId = response.strapiId || paymentId;
 
-        if (typeof growPayment !== "undefined") {
+        // Double-check that SDK is initialized before calling renderPaymentOptions
+        if (typeof growPayment !== "undefined" && this.sdkInitialized) {
           console.log("Calling growPayment.renderPaymentOptions");
-          growPayment.renderPaymentOptions(response.authCode);
+
+          try {
+            growPayment.renderPaymentOptions(response.authCode);
+          } catch (renderError) {
+            console.error("Error rendering payment options:", renderError);
+
+            // Try to reinitialize and retry once
+            if (!this.hasRetried) {
+              console.log("Attempting to reinitialize SDK and retry...");
+              this.hasRetried = true;
+              this.sdkInitialized = false;
+
+              this.configureSDK(() => {
+                try {
+                  growPayment.renderPaymentOptions(response.authCode);
+                } catch (secondError) {
+                  console.error("Second attempt failed:", secondError);
+                  this.showError("שגיאה בהצגת אפשרויות התשלום");
+                  this.paymentInProgress = false;
+                  this.hideLoader();
+                }
+              });
+            } else {
+              throw renderError;
+            }
+          }
         } else {
-          throw new Error("SDK not available");
+          throw new Error("SDK not properly initialized");
         }
       } else {
         throw new Error(response.message || "Failed to create payment process");
@@ -209,12 +288,8 @@ class RishumitPaymentSDK {
 
     const confirmationNumber = response.data?.confirmation_number || "";
     const paymentMethod = response.data?.payment_method || "";
-
-    // Get the Strapi ID from the current payment process
-    // You'll need to store this when creating the payment
     const strapiId = this.currentStrapiId || "";
 
-    // Build URL with all parameters
     let redirectUrl = `/thank-you?confirmation=${confirmationNumber}&method=${paymentMethod}`;
     if (strapiId) {
       redirectUrl += `&id=${strapiId}`;
