@@ -148,7 +148,7 @@ class RishumitPaymentSDK {
     }
 
     const config = {
-      environment: "PRODUCTION",
+      environment: "DEV",
       version: 1,
       // Mobile-specific configuration
       mobile: this.isMobile
