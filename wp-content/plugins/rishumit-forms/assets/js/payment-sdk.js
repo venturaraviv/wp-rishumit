@@ -123,6 +123,7 @@ class RishumitPaymentSDK {
 
   configureSDK(callback) {
     console.log("Configuring Meshulam SDK...");
+    console.log("Mobile device detected:", this.isMobile);
 
     // Check if growPayment is available
     if (typeof growPayment === "undefined") {
@@ -132,9 +133,12 @@ class RishumitPaymentSDK {
         console.log(
           `Retrying SDK initialization (${this.initializationRetries}/${this.maxRetries})...`
         );
-        setTimeout(() => {
-          this.configureSDK(callback);
-        }, 500);
+        setTimeout(
+          () => {
+            this.configureSDK(callback);
+          },
+          this.isMobile ? 1000 : 500
+        );
         return;
       } else {
         this.showError("שגיאה בטעינת מערכת התשלומים - SDK לא זמין");
@@ -146,6 +150,14 @@ class RishumitPaymentSDK {
     const config = {
       environment: "PRODUCTION",
       version: 1,
+      // Mobile-specific configuration
+      mobile: this.isMobile
+        ? {
+            theme: "light",
+            animation: false, // Disable animations on mobile for better performance
+            fullscreen: true,
+          }
+        : undefined,
       events: {
         onSuccess: (response) => {
           console.log("Payment successful:", response);
@@ -178,15 +190,17 @@ class RishumitPaymentSDK {
     };
 
     try {
+      console.log("Initializing with config:", config);
       growPayment.init(config);
       console.log("Meshulam SDK configured successfully");
       this.sdkInitialized = true;
-      this.initializationRetries = 0; // Reset counter on success
+      this.initializationRetries = 0;
 
-      // Wait a bit more to ensure wallet is fully initialized
+      // Longer wait for mobile devices
+      const waitTime = this.isMobile ? 1000 : 200;
       setTimeout(() => {
         if (callback) callback();
-      }, 200);
+      }, waitTime);
     } catch (error) {
       console.error("Error configuring SDK:", error);
       if (this.initializationRetries < this.maxRetries) {
@@ -194,11 +208,14 @@ class RishumitPaymentSDK {
         console.log(
           `Retrying SDK configuration (${this.initializationRetries}/${this.maxRetries})...`
         );
-        setTimeout(() => {
-          this.configureSDK(callback);
-        }, 1000);
+        setTimeout(
+          () => {
+            this.configureSDK(callback);
+          },
+          this.isMobile ? 2000 : 1000
+        );
       } else {
-        this.showError("שגיאה בהגדרת מערכת התשלומים");
+        this.showError("שגיאה בהגדרת מערכת התשלומים - נסה לרענן את הדף");
         this.paymentInProgress = false;
       }
     }
