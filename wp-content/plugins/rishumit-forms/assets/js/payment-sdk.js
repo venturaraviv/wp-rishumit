@@ -223,9 +223,26 @@ class RishumitPaymentSDK {
           console.log("Calling growPayment.renderPaymentOptions");
 
           try {
+            // Mobile-specific: Add viewport meta tag if missing
+            if (!document.querySelector('meta[name="viewport"]')) {
+              const viewport = document.createElement("meta");
+              viewport.name = "viewport";
+              viewport.content =
+                "width=device-width, initial-scale=1.0, user-scalable=no";
+              document.head.appendChild(viewport);
+            }
+
             growPayment.renderPaymentOptions(response.authCode);
           } catch (renderError) {
             console.error("Error rendering payment options:", renderError);
+
+            // Enhanced error message for mobile
+            const isMobile = /iPhone|iPad|iPod|Android/i.test(
+              navigator.userAgent
+            );
+            const errorMsg = isMobile
+              ? "שגיאה בהצגת אפשרויות התשלום במכשיר נייד. אנא נסה לרענן את הדף."
+              : "שגיאה בהצגת אפשרויות התשלום";
 
             // Try to reinitialize and retry once
             if (!this.hasRetried) {
@@ -233,18 +250,26 @@ class RishumitPaymentSDK {
               this.hasRetried = true;
               this.sdkInitialized = false;
 
-              this.configureSDK(() => {
-                try {
-                  growPayment.renderPaymentOptions(response.authCode);
-                } catch (secondError) {
-                  console.error("Second attempt failed:", secondError);
-                  this.showError("שגיאה בהצגת אפשרויות התשלום");
-                  this.paymentInProgress = false;
-                  this.hideLoader();
-                }
-              });
+              // Longer delay for mobile retry
+              setTimeout(
+                () => {
+                  this.configureSDK(() => {
+                    try {
+                      growPayment.renderPaymentOptions(response.authCode);
+                    } catch (secondError) {
+                      console.error("Second attempt failed:", secondError);
+                      this.showError(errorMsg);
+                      this.paymentInProgress = false;
+                      this.hideLoader();
+                    }
+                  });
+                },
+                isMobile ? 1000 : 500
+              );
             } else {
-              throw renderError;
+              this.showError(errorMsg);
+              this.paymentInProgress = false;
+              this.hideLoader();
             }
           }
         } else {
@@ -255,7 +280,16 @@ class RishumitPaymentSDK {
       }
     } catch (error) {
       console.error("Payment process error:", error);
-      this.showError("שגיאה ביצירת תהליך התשלום: " + error.message);
+
+      // More user-friendly error messages
+      let errorMessage = "שגיאה ביצירת תהליך התשלום";
+      if (error.message.includes("Network")) {
+        errorMessage = "בעיית רשת. אנא בדק את החיבור לאינטרנט ונסה שוב";
+      } else if (error.message.includes("timeout")) {
+        errorMessage = "זמן הטעינה חרג. אנא נסה שוב";
+      }
+
+      this.showError(errorMessage + ": " + error.message);
       this.paymentInProgress = false;
       this.hideLoader();
     }
