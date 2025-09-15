@@ -10,6 +10,8 @@ class Form
     private $strapiToken;
     private $notifyUrl;
     private bool $isProd = false;
+    private ?string $userId   = null;
+    private ?string $pageCode = null;
 
     public function __construct()
     {
@@ -44,6 +46,19 @@ class Form
         }
 
         error_log('Env: '.($this->isProd ? 'PROD' : 'NON-PROD').' host='.$host);
+
+        if (defined('USERID') && defined('PAGECODE') && USERID && PAGECODE) {
+            $this->userId   = USERID;
+            $this->pageCode = PAGECODE;
+        } else {
+            $this->userId   = '85eaf86f53661afe';
+            $this->pageCode = 'de204c9b408d';
+
+            // Only complain in prod
+            if ($this->isProd) {
+                error_log('❌ Meshulam USERID or PAGECODE missing in wp-config.php');
+            }
+        }
     }
 
 
@@ -181,8 +196,6 @@ class Form
         } elseif (strlen($phone_value) !== 10 || substr($phone_value, 0, 2) !== '05') {
             $ajax_handler->add_error($field['id'], __("אנא הזן מספר טלפון נייד ישראלי תקין (10 ספרות המתחילות ב-05).", "rishumit-plugin"));
         }
-
-        error_log("Global Phone Validation - Field: " . $field['id'] . ", Value: " . $phone_value);
     }
 
     public function validateIsraeliID($field, $record, $ajax_handler)
@@ -199,8 +212,6 @@ class Form
         } elseif (strlen($id_value) !== 9 || !$this->isValidIsraeliID($id_value)) {
             $ajax_handler->add_error($field['id'], __("אנא הזן מספר תעודת זהות ישראלית תקינה.", "rishumit-plugin"));
         }
-
-        error_log("ID Validation - Field: " . $field['id'] . ", Value: " . $id_value);
     }
 
 
@@ -299,7 +310,6 @@ class Form
 
             // Log all fields for debugging purposes
             error_log('Form Name: ' . $form_name);
-            error_log('Filtered Form Fields: ' . print_r($fields, true));
 
             // Initialize children array
             $children = [];
@@ -349,17 +359,8 @@ class Form
                 ]
             ];
 
-            // Log complete payload for debugging
-            error_log('Complete payload: ' . json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
-
-            // Use debug function before sending to Strapi
-            $this->debugFormSubmission($payload, null, $fields);
-
             // Send to Strapi and get response
             $strapi_response = $this->sendToStrapi($this->strapiEndpointRequest, $payload);
-
-            // Use debug function with the response
-            $this->debugFormSubmission($payload, $strapi_response, $fields);
 
             if (!$strapi_response['success']) {
                 // If Strapi reported an error
@@ -647,7 +648,6 @@ class Form
 
             // Log the request details
             error_log('Sending to Strapi: ' . $endpoint);
-            error_log('Request data: ' . $json_data);
 
             // Build headers array first
             $headers = [
@@ -665,7 +665,7 @@ class Form
                 'headers' => $headers,
                 'body'    => $json_data,
                 'timeout' => 45, // Increase timeout for potential slow responses
-                'sslverify' => $this->isProd ? true : false,
+                'sslverify' => true,
             ]);
 
             if (is_wp_error($response)) {
@@ -676,10 +676,6 @@ class Form
 
             $response_code = wp_remote_retrieve_response_code($response);
             $response_body = wp_remote_retrieve_body($response);
-
-            // Log the response status
-            error_log("Strapi response code: $response_code");
-            error_log("Strapi response body: $response_body");
 
             // Check for unsuccessful HTTP codes
             if ($response_code < 200 || $response_code >= 300) {
@@ -830,7 +826,6 @@ class Form
 
         // Log the phone value for debugging
         $phone_value = isset($fieldInfo[$actualFieldName]['value']) ? $fieldInfo[$actualFieldName]['value'] : 'EMPTY';
-        error_log("Phone validation - value: $phone_value");
 
         // Accept almost any phone input for now to debug
         // Only validate if it's completely empty
@@ -862,7 +857,6 @@ class Form
 
         // Log the field value for debugging
         $name_value = isset($fieldInfo[$actualFieldName]['value']) ? $fieldInfo[$actualFieldName]['value'] : 'EMPTY';
-        error_log("Name validation for $fieldName (actual: $actualFieldName) - value: $name_value");
 
         // Accept virtually any input for now to debug
         // Only validate if it's completely empty
@@ -889,75 +883,12 @@ class Form
             $ajax_handler->add_error($fieldName, __("כתובת אימייל לא תקינה.", "rishumit-plugin"));
         }
     }
-    /**
-     * Add this function to your Form class to debug the form submission
-     */
-    private function debugFormSubmission($payload, $strapi_response, $fields)
-    {
-        // Create a debug log file in the wp-content directory
-        $upload_dir = wp_upload_dir();
-        $log_file = $upload_dir['basedir'] . '/form_debug_' . date('Y-m-d') . '.log';
 
-        // Start logging
-        $log = "\n\n===== FORM SUBMISSION DEBUG " . current_time('mysql') . " =====\n";
-
-        // Log the raw fields
-        $log .= "=== RAW FORM FIELDS ===\n";
-        $log .= print_r($fields, true);
-
-        // Log the processed payload
-        $log .= "\n=== PROCESSED PAYLOAD ===\n";
-        $log .= json_encode($payload, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
-
-        // Log the Strapi response
-        $log .= "\n=== STRAPI RESPONSE ===\n";
-        if (is_array($strapi_response)) {
-            $log .= "Success: " . ($strapi_response['success'] ? 'true' : 'false') . "\n";
-            $log .= "Message: " . ($strapi_response['message'] ?? 'No message') . "\n";
-
-            if (isset($strapi_response['data'])) {
-                $log .= "Data: " . json_encode($strapi_response['data'], JSON_PRETTY_PRINT) . "\n";
-            }
-        } else {
-            $log .= "Non-array response: " . print_r($strapi_response, true) . "\n";
-        }
-
-        // Test Strapi connection directly
-        $log .= "\n=== TESTING STRAPI CONNECTION ===\n";
-        $test_response = wp_remote_get($this->strapiEndpointRequest, [
-            'headers' => [
-                'Authorization' => !empty($this->strapiToken) ? ('Bearer '.$this->strapiToken) : null,
-            ],
-            'timeout' => 30
-        ]);
-
-        if (is_wp_error($test_response)) {
-            $log .= "Connection test failed: " . $test_response->get_error_message() . "\n";
-        } else {
-            $log .= "Connection test response code: " . wp_remote_retrieve_response_code($test_response) . "\n";
-            $log .= "Connection test headers: " . print_r(wp_remote_retrieve_headers($test_response), true) . "\n";
-        }
-
-        // Write to log file
-        file_put_contents($log_file, $log, FILE_APPEND);
-
-        // Also send an admin email with the debug info
-        $admin_email = get_option('admin_email');
-        wp_mail(
-            $admin_email,
-            'Form Submission Debug Report',
-            "Form submission debug information has been logged to: $log_file\n\nThe key issues may be in the Strapi response section."
-        );
-    }
-
-    // REPLACE your existing createPaymentLink function with this:
     private function createPaymentProcess($full_name, $phone, $email, $form_name, $strapi_id)
     {
         $endpoint = $this->isProd
             ? 'https://meshulam.co.il/api/light/server/1.0/createPaymentProcess'
             : 'https://sandbox.meshulam.co.il/api/light/server/1.0/createPaymentProcess';
-
-        error_log("SDK Payment Process - Name: $full_name, Phone: $phone, Email: $email, Form: $form_name, ID: $strapi_id");
 
         if (!empty($phone)) {
             $phone = preg_replace('/[^0-9]/', '', $phone);
@@ -981,20 +912,9 @@ class Form
             $full_name = substr($full_name, 0, 47) . '...';
         }
 
-        $userId = '';
-        $pageCode = '';
-
-        if ($this->isProd) {
-            $userId = 'f48a1e81504cf79c'; //fill with real one from Grow Team
-            $pageCode = 'b72278d5fa94'; //fill with real one from Grow Team
-        } else {
-            $userId = '85eaf86f53661afe';
-            $pageCode = 'de204c9b408d';
-        }
-
         $params = [
-            'userId' => $userId,
-            'pageCode' => $pageCode,
+            'userId' => $this->userId,
+            'pageCode' => $this->pageCode,
             'sum' => $this->getAmountByForm($form_name),
             'successUrl' => site_url('/thank-you?id=' . $strapi_id . '&form=' . urlencode($form_name)),
             'cancelUrl' => site_url('/payment-cancelled?id=' . $strapi_id),
@@ -1006,8 +926,6 @@ class Form
             'cField1' => $strapi_id,
             'id' => $strapi_id,
         ];
-
-        error_log("Sending to Meshulam with params: " . print_r($params, true));
 
         $response = wp_remote_post($endpoint, [
             'method' => 'POST',
