@@ -148,7 +148,8 @@ class RishumitPaymentSDK {
     }
 
     const config = {
-      environment: "DEV",
+      environment:
+        window.WP_ENVIRONMENT_TYPE === "PRODUCTION" ? "PRODUCTION" : "DEV",
       version: 1,
       // Mobile-specific configuration
       mobile: this.isMobile

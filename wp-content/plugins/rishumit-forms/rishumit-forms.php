@@ -104,6 +104,15 @@ function rishumit_enqueue_payment_assets()
             true
         );
 
+        // Pass WP_ENVIRONMENT_TYPE straight to JS
+        $env = defined('WP_ENVIRONMENT_TYPE') ? WP_ENVIRONMENT_TYPE : 'PRODUCTION';
+
+        wp_add_inline_script(
+            'rishumit-payment-sdk',
+            "window.WP_ENVIRONMENT_TYPE = '{$env}';",
+            'before'
+        );
+
         // Localize script with AJAX data
         wp_localize_script(
             'rishumit-payment-sdk',
