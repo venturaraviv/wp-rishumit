@@ -139,10 +139,10 @@ function check_payment_status()
 
     $payment_id = sanitize_text_field($_POST['payment_id']);
 
-    // Just return success for now - payments are working anyway
+    // Always return pending during payment process - let the real payment flow happen
     wp_send_json([
         'success' => true,
-        'status' => 'paid',
+        'status' => 'pending', // Changed from 'paid' to 'pending'
         'confirmation_number' => '',
         'payment_method' => 'card'
     ]);

@@ -76,7 +76,7 @@ class RishumitPaymentSDK {
       ) {
         this.checkPaymentStatus();
       }
-    }, 2000);
+    }, 10000);
   }
 
   // NEW: Check payment status via server
