@@ -1,16 +1,41 @@
 class RishumitPaymentSDK {
   constructor() {
     this.sdkLoaded = false;
-    this.sdkInitialized = false; // Track if SDK is fully initialized
+    this.sdkInitialized = false;
     this.paymentInProgress = false;
     this.paymentProcessed = new Set();
     this.initializationRetries = 0;
     this.maxRetries = 3;
+    this.hasRetried = false;
+    this.isMobile = this.detectMobileDevice();
     this.init();
+  }
+
+  detectMobileDevice() {
+    const isMobile =
+      /iPhone|iPad|iPod|Android|webOS|BlackBerry|IEMobile|Opera Mini/i.test(
+        navigator.userAgent
+      );
+    const isTouchDevice =
+      "ontouchstart" in window || navigator.maxTouchPoints > 0;
+    const isSmallScreen = window.innerWidth <= 768;
+
+    console.log("Mobile detection:", {
+      isMobile,
+      isTouchDevice,
+      isSmallScreen,
+      userAgent: navigator.userAgent,
+    });
+    return isMobile || (isTouchDevice && isSmallScreen);
   }
 
   init() {
     console.log("RishumitPaymentSDK initializing...");
+    console.log("Mobile device detected:", this.isMobile);
+
+    // Add mobile-specific viewport if missing
+    this.ensureViewport();
+
     document.addEventListener("DOMContentLoaded", () => {
       this.bindFormEvents();
     });
@@ -23,8 +48,25 @@ class RishumitPaymentSDK {
     }
   }
 
+  ensureViewport() {
+    if (this.isMobile && !document.querySelector('meta[name="viewport"]')) {
+      const viewport = document.createElement("meta");
+      viewport.name = "viewport";
+      viewport.content =
+        "width=device-width, initial-scale=1.0, user-scalable=no, shrink-to-fit=no";
+      document.head.appendChild(viewport);
+      console.log("Viewport meta tag added for mobile");
+    }
+  }
+
   bindFormEvents() {
     console.log("Binding form events...");
+
+    // Ensure jQuery is available
+    if (typeof jQuery === "undefined") {
+      console.error("jQuery not loaded - payment detection may not work");
+      return;
+    }
 
     jQuery(document).ajaxSuccess((event, xhr, settings) => {
       if (
@@ -34,8 +76,8 @@ class RishumitPaymentSDK {
       ) {
         try {
           const response = JSON.parse(xhr.responseText);
-
           let paymentData = null;
+
           if (response?.data?.data?.show_payment) {
             paymentData = response.data.data;
           } else if (response?.data?.show_payment) {
@@ -52,7 +94,12 @@ class RishumitPaymentSDK {
             if (!this.paymentProcessed.has(paymentData.payment_id)) {
               console.log("PAYMENT TRIGGER DETECTED:", paymentData);
               this.paymentProcessed.add(paymentData.payment_id);
-              this.loadSDKAndProcess(paymentData.payment_id);
+
+              // Add delay for mobile devices to ensure DOM is ready
+              const delay = this.isMobile ? 500 : 100;
+              setTimeout(() => {
+                this.loadSDKAndProcess(paymentData.payment_id);
+              }, delay);
             } else {
               console.log(
                 "Payment already processed for ID:",
@@ -61,7 +108,7 @@ class RishumitPaymentSDK {
             }
           }
         } catch (e) {
-          // Not JSON
+          console.error("Error parsing AJAX response:", e);
         }
       }
     });
@@ -78,6 +125,7 @@ class RishumitPaymentSDK {
     }
 
     this.paymentInProgress = true;
+    this.hasRetried = false; // Reset retry flag
 
     if (this.sdkLoaded && this.sdkInitialized) {
       console.log("SDK already loaded and initialized, processing payment");
@@ -94,6 +142,10 @@ class RishumitPaymentSDK {
     }
 
     console.log("Loading Meshulam SDK...");
+    this.loadMeshulamSDK(paymentId);
+  }
+
+  loadMeshulamSDK(paymentId) {
     const script = document.createElement("script");
     script.type = "text/javascript";
     script.async = true;
@@ -103,19 +155,26 @@ class RishumitPaymentSDK {
       console.log("Meshulam SDK loaded successfully");
       this.sdkLoaded = true;
 
-      // Add a small delay to ensure the SDK is fully ready
+      // Longer delay for mobile devices
+      const delay = this.isMobile ? 1000 : 200;
       setTimeout(() => {
         this.configureSDK(() => {
           this.processPayment(paymentId);
         });
-      }, 100);
+      }, delay);
     };
 
-    script.onerror = () => {
-      console.error("Failed to load Meshulam SDK");
-      this.showError("שגיאה בטעינת מערכת התשלומים");
+    script.onerror = (error) => {
+      console.error("Failed to load Meshulam SDK:", error);
+      this.showError("שגיאה בטעינת מערכת התשלומים - בעיית רשת");
       this.paymentInProgress = false;
     };
+
+    // Remove existing script if present
+    const existingScript = document.querySelector('script[src*="meshulam"]');
+    if (existingScript) {
+      existingScript.remove();
+    }
 
     const firstScript = document.getElementsByTagName("script")[0];
     firstScript.parentNode.insertBefore(script, firstScript);
@@ -125,38 +184,48 @@ class RishumitPaymentSDK {
     console.log("Configuring Meshulam SDK...");
     console.log("Mobile device detected:", this.isMobile);
 
-    // Check if growPayment is available
-    if (typeof growPayment === "undefined") {
-      console.error("growPayment object not available");
-      if (this.initializationRetries < this.maxRetries) {
-        this.initializationRetries++;
-        console.log(
-          `Retrying SDK initialization (${this.initializationRetries}/${this.maxRetries})...`
-        );
-        setTimeout(
-          () => {
-            this.configureSDK(callback);
-          },
-          this.isMobile ? 1000 : 500
-        );
-        return;
-      } else {
-        this.showError("שגיאה בטעינת מערכת התשלומים - SDK לא זמין");
-        this.paymentInProgress = false;
-        return;
-      }
-    }
+    // Wait for SDK to be fully available
+    const checkSDKAvailable = (retryCount = 0) => {
+      if (typeof growPayment === "undefined") {
+        console.error("growPayment object not available");
 
+        if (retryCount < this.maxRetries) {
+          console.log(
+            `Retrying SDK availability check (${retryCount + 1}/${
+              this.maxRetries
+            })...`
+          );
+          const retryDelay = this.isMobile ? 1500 : 800;
+          setTimeout(() => {
+            checkSDKAvailable(retryCount + 1);
+          }, retryDelay);
+          return;
+        } else {
+          this.showError("שגיאה בטעינת מערכת התשלומים - SDK לא זמין");
+          this.paymentInProgress = false;
+          return;
+        }
+      }
+
+      // SDK is available, proceed with configuration
+      this.initializeSDK(callback);
+    };
+
+    checkSDKAvailable();
+  }
+
+  initializeSDK(callback) {
     const config = {
       environment:
         window.WP_ENVIRONMENT_TYPE === "PRODUCTION" ? "PRODUCTION" : "DEV",
       version: 1,
-      // Mobile-specific configuration
       mobile: this.isMobile
         ? {
             theme: "light",
-            animation: false, // Disable animations on mobile for better performance
+            animation: false,
             fullscreen: true,
+            preventZoom: true,
+            optimizeForMobile: true,
           }
         : undefined,
       events: {
@@ -198,25 +267,27 @@ class RishumitPaymentSDK {
       this.initializationRetries = 0;
 
       // Longer wait for mobile devices
-      const waitTime = this.isMobile ? 1000 : 200;
+      const waitTime = this.isMobile ? 1500 : 300;
       setTimeout(() => {
         if (callback) callback();
       }, waitTime);
     } catch (error) {
       console.error("Error configuring SDK:", error);
+
       if (this.initializationRetries < this.maxRetries) {
         this.initializationRetries++;
         console.log(
           `Retrying SDK configuration (${this.initializationRetries}/${this.maxRetries})...`
         );
-        setTimeout(
-          () => {
-            this.configureSDK(callback);
-          },
-          this.isMobile ? 2000 : 1000
-        );
+        const retryDelay = this.isMobile ? 2000 : 1000;
+        setTimeout(() => {
+          this.configureSDK(callback);
+        }, retryDelay);
       } else {
-        this.showError("שגיאה בהגדרת מערכת התשלומים - נסה לרענן את הדף");
+        const errorMsg = this.isMobile
+          ? "שגיאה בהגדרת מערכת התשלומים במכשיר נייד. אנא נסה לרענן את הדף או השתמש בדפדפן אחר"
+          : "שגיאה בהגדרת מערכת התשלומים - נסה לרענן את הדף";
+        this.showError(errorMsg);
         this.paymentInProgress = false;
       }
     }
@@ -224,7 +295,6 @@ class RishumitPaymentSDK {
 
   async processPayment(paymentId) {
     console.log("processPayment called with ID:", paymentId);
-
     this.showLoader();
 
     try {
@@ -236,106 +306,143 @@ class RishumitPaymentSDK {
         console.log("Payment process created, authCode:", response.authCode);
         this.currentStrapiId = response.strapiId || paymentId;
 
-        // Double-check that SDK is initialized before calling renderPaymentOptions
+        // Ensure SDK is still initialized before rendering
         if (typeof growPayment !== "undefined" && this.sdkInitialized) {
           console.log("Calling growPayment.renderPaymentOptions");
 
           try {
-            // Mobile-specific: Add viewport meta tag if missing
-            if (!document.querySelector('meta[name="viewport"]')) {
-              const viewport = document.createElement("meta");
-              viewport.name = "viewport";
-              viewport.content =
-                "width=device-width, initial-scale=1.0, user-scalable=no";
-              document.head.appendChild(viewport);
+            // For mobile, ensure proper styling and prevent zoom
+            if (this.isMobile) {
+              document.body.style.overflow = "hidden";
+              document.documentElement.style.overflow = "hidden";
             }
 
-            growPayment.renderPaymentOptions(response.authCode);
+            await this.renderPaymentWithRetry(response.authCode);
           } catch (renderError) {
             console.error("Error rendering payment options:", renderError);
-
-            // Enhanced error message for mobile
-            const isMobile = /iPhone|iPad|iPod|Android/i.test(
-              navigator.userAgent
-            );
-            const errorMsg = isMobile
-              ? "שגיאה בהצגת אפשרויות התשלום במכשיר נייד. אנא נסה לרענן את הדף."
-              : "שגיאה בהצגת אפשרויות התשלום";
-
-            // Try to reinitialize and retry once
-            if (!this.hasRetried) {
-              console.log("Attempting to reinitialize SDK and retry...");
-              this.hasRetried = true;
-              this.sdkInitialized = false;
-
-              // Longer delay for mobile retry
-              setTimeout(
-                () => {
-                  this.configureSDK(() => {
-                    try {
-                      growPayment.renderPaymentOptions(response.authCode);
-                    } catch (secondError) {
-                      console.error("Second attempt failed:", secondError);
-                      this.showError(errorMsg);
-                      this.paymentInProgress = false;
-                      this.hideLoader();
-                    }
-                  });
-                },
-                isMobile ? 1000 : 500
-              );
-            } else {
-              this.showError(errorMsg);
-              this.paymentInProgress = false;
-              this.hideLoader();
-            }
+            this.handleRenderError(renderError, response.authCode);
           }
         } else {
-          throw new Error("SDK not properly initialized");
+          throw new Error("SDK not properly initialized for payment rendering");
         }
       } else {
         throw new Error(response.message || "Failed to create payment process");
       }
     } catch (error) {
       console.error("Payment process error:", error);
+      this.handleProcessError(error);
+    }
+  }
 
-      // More user-friendly error messages
-      let errorMessage = "שגיאה ביצירת תהליך התשלום";
-      if (error.message.includes("Network")) {
-        errorMessage = "בעיית רשת. אנא בדק את החיבור לאינטרנט ונסה שוב";
-      } else if (error.message.includes("timeout")) {
-        errorMessage = "זמן הטעינה חרג. אנא נסה שוב";
+  async renderPaymentWithRetry(authCode, retryCount = 0) {
+    try {
+      growPayment.renderPaymentOptions(authCode);
+    } catch (error) {
+      if (retryCount < 2) {
+        console.log(`Retrying payment render (${retryCount + 1}/2)...`);
+        const delay = this.isMobile ? 1000 : 500;
+        await new Promise((resolve) => setTimeout(resolve, delay));
+        return this.renderPaymentWithRetry(authCode, retryCount + 1);
+      } else {
+        throw error;
       }
+    }
+  }
 
-      this.showError(errorMessage + ": " + error.message);
-      this.paymentInProgress = false;
-      this.hideLoader();
+  handleRenderError(renderError, authCode) {
+    const isMobile = this.isMobile;
+    const errorMsg = isMobile
+      ? "שגיאה בהצגת אפשרויות התשלום במכשיר נייד. אנא נסה לרענן את הדף או השתמש בדפדפן אחר."
+      : "שגיאה בהצגת אפשרויות התשלום";
+
+    if (!this.hasRetried) {
+      console.log("Attempting to reinitialize SDK and retry...");
+      this.hasRetried = true;
+      this.sdkInitialized = false;
+
+      const retryDelay = isMobile ? 2000 : 1000;
+      setTimeout(() => {
+        this.configureSDK(() => {
+          try {
+            growPayment.renderPaymentOptions(authCode);
+          } catch (secondError) {
+            console.error("Second attempt failed:", secondError);
+            this.showError(errorMsg);
+            this.resetPaymentState();
+          }
+        });
+      }, retryDelay);
+    } else {
+      this.showError(errorMsg);
+      this.resetPaymentState();
+    }
+  }
+
+  handleProcessError(error) {
+    let errorMessage = "שגיאה ביצירת תהליך התשלום";
+
+    if (error.message.includes("Network") || error.message.includes("fetch")) {
+      errorMessage = "בעיית רשת. אנא בדק את החיבור לאינטרנט ונסה שוב";
+    } else if (error.message.includes("timeout")) {
+      errorMessage = "זמן הטעינה חרג. אנא נסה שוב";
+    } else if (this.isMobile && error.message.includes("SDK")) {
+      errorMessage = "שגיאה במערכת התשלומים במכשיר נייד. אנא נסה דפדפן אחר";
+    }
+
+    this.showError(errorMessage + ": " + error.message);
+    this.resetPaymentState();
+  }
+
+  resetPaymentState() {
+    this.paymentInProgress = false;
+    this.hideLoader();
+
+    // Reset mobile styles
+    if (this.isMobile) {
+      document.body.style.overflow = "";
+      document.documentElement.style.overflow = "";
     }
   }
 
   async createPaymentProcess(paymentId) {
-    const formData = new FormData();
-    formData.append("action", "create_payment_process");
-    formData.append("payment_id", paymentId);
-    formData.append("nonce", rishumit_ajax.nonce);
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
 
-    const response = await fetch(rishumit_ajax.ajax_url, {
-      method: "POST",
-      body: formData,
-    });
+    try {
+      const formData = new FormData();
+      formData.append("action", "create_payment_process");
+      formData.append("payment_id", paymentId);
+      formData.append("nonce", rishumit_ajax.nonce);
 
-    if (!response.ok) {
-      throw new Error("Network error");
+      const response = await fetch(rishumit_ajax.ajax_url, {
+        method: "POST",
+        body: formData,
+        signal: controller.signal,
+        headers: {
+          "X-Requested-With": "XMLHttpRequest",
+        },
+      });
+
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const result = await response.json();
+      return result;
+    } catch (error) {
+      clearTimeout(timeoutId);
+      if (error.name === "AbortError") {
+        throw new Error("Request timeout - please try again");
+      }
+      throw error;
     }
-
-    return await response.json();
   }
 
   // Event handlers
   handlePaymentSuccess(response) {
-    this.paymentInProgress = false;
-    this.hideLoader();
-
+    this.resetPaymentState();
     console.log("Payment completed successfully:", response);
 
     const confirmationNumber = response.data?.confirmation_number || "";
@@ -347,38 +454,42 @@ class RishumitPaymentSDK {
       redirectUrl += `&id=${strapiId}`;
     }
 
-    window.location.href = redirectUrl;
+    // Add delay for mobile to ensure payment completion
+    const redirectDelay = this.isMobile ? 1000 : 100;
+    setTimeout(() => {
+      window.location.href = redirectUrl;
+    }, redirectDelay);
   }
 
   handlePaymentFailure(response) {
-    this.paymentInProgress = false;
-    this.hideLoader();
-    this.showError("התשלום נכשל: " + (response.message || "שגיאה לא ידועה"));
+    this.resetPaymentState();
+    const message = response.message || "שגיאה לא ידועה";
+    this.showError("התשלום נכשל: " + message);
   }
 
   handlePaymentError(response) {
-    this.paymentInProgress = false;
-    this.hideLoader();
-    this.showError("שגיאה בתשלום: " + (response.message || "שגיאה טכנית"));
+    this.resetPaymentState();
+    const message = response.message || "שגיאה טכנית";
+    this.showError("שגיאה בתשלום: " + message);
   }
 
   handlePaymentTimeout(response) {
-    this.paymentInProgress = false;
-    this.hideLoader();
+    this.resetPaymentState();
     this.showError("זמן התשלום פג. אנא נסה שוב.");
   }
 
   handleWalletChange(state) {
+    console.log("Wallet state:", state);
     if (state === "open") {
       this.hideLoader();
     } else if (state === "close") {
-      this.paymentInProgress = false;
+      this.resetPaymentState();
     }
   }
 
   handlePaymentCancel(response) {
-    this.paymentInProgress = false;
-    this.hideLoader();
+    this.resetPaymentState();
+    console.log("Payment cancelled by user");
   }
 
   // UI helpers
@@ -388,13 +499,55 @@ class RishumitPaymentSDK {
       loader = document.createElement("div");
       loader.id = "payment-loader";
       loader.innerHTML = `
-                <div class="payment-overlay">
-                    <div class="payment-spinner">
-                        <div class="spinner"></div>
-                        <p>מכין תשלום...</p>
-                    </div>
-                </div>
-            `;
+        <div class="payment-overlay" style="
+          position: fixed;
+          top: 0;
+          left: 0;
+          width: 100%;
+          height: 100%;
+          background: rgba(0,0,0,0.7);
+          display: flex;
+          justify-content: center;
+          align-items: center;
+          z-index: 999999;
+          ${this.isMobile ? "touch-action: none;" : ""}
+        ">
+          <div class="payment-spinner" style="
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            text-align: center;
+            ${this.isMobile ? "width: 80%; max-width: 300px;" : ""}
+          ">
+            <div class="spinner" style="
+              border: 4px solid #f3f3f3;
+              border-top: 4px solid #3498db;
+              border-radius: 50%;
+              width: 40px;
+              height: 40px;
+              animation: spin 1s linear infinite;
+              margin: 0 auto 10px;
+            "></div>
+            <p style="margin: 0; font-size: ${
+              this.isMobile ? "16px" : "14px"
+            };">מכין תשלום...</p>
+          </div>
+        </div>
+      `;
+
+      // Add CSS animation
+      if (!document.getElementById("payment-spinner-styles")) {
+        const style = document.createElement("style");
+        style.id = "payment-spinner-styles";
+        style.textContent = `
+          @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+          }
+        `;
+        document.head.appendChild(style);
+      }
+
       document.body.appendChild(loader);
     }
     loader.style.display = "block";
@@ -415,31 +568,70 @@ class RishumitPaymentSDK {
 
     const errorDiv = document.createElement("div");
     errorDiv.id = "payment-error";
-    errorDiv.className = "payment-error";
     errorDiv.innerHTML = `
-            <div class="error-content">
-                <p>${message}</p>
-                <button onclick="this.parentElement.parentElement.remove()">סגור</button>
-            </div>
-        `;
+      <div style="
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0,0,0,0.7);
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        z-index: 1000000;
+        ${this.isMobile ? "padding: 20px; box-sizing: border-box;" : ""}
+      ">
+        <div style="
+          background: white;
+          padding: 20px;
+          border-radius: 8px;
+          text-align: center;
+          ${
+            this.isMobile
+              ? "width: 100%; max-width: 400px; font-size: 16px;"
+              : "max-width: 500px;"
+          }
+          box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        ">
+          <p style="margin: 0 0 15px 0; color: #d32f2f; font-weight: bold;">${message}</p>
+          <button onclick="this.closest('#payment-error').remove()" style="
+            background: #3498db;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: ${this.isMobile ? "16px" : "14px"};
+          ">סגור</button>
+        </div>
+      </div>
+    `;
     document.body.appendChild(errorDiv);
 
+    // Auto-remove after 15 seconds (longer for mobile)
+    const autoRemoveTime = this.isMobile ? 15000 : 10000;
     setTimeout(() => {
       if (errorDiv.parentNode) {
         errorDiv.remove();
       }
-    }, 10000);
+    }, autoRemoveTime);
   }
 }
 
-// Initialize
+// Enhanced initialization
 document.addEventListener("DOMContentLoaded", () => {
-  window.rishumitPaymentSDK = new RishumitPaymentSDK();
+  if (!window.rishumitPaymentSDK) {
+    window.rishumitPaymentSDK = new RishumitPaymentSDK();
+  }
 });
 
+// Fallback initialization
 if (
   document.readyState === "complete" ||
   document.readyState === "interactive"
 ) {
-  window.rishumitPaymentSDK = new RishumitPaymentSDK();
+  if (!window.rishumitPaymentSDK) {
+    window.rishumitPaymentSDK = new RishumitPaymentSDK();
+  }
 }
