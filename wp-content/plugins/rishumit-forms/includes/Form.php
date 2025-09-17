@@ -975,9 +975,6 @@ class Form
         'Tabu Service' => 189
     ];
 
-        // override for testing
-        return 1;
-
         return $amounts[$form_name] ?? 159;
     }
 
