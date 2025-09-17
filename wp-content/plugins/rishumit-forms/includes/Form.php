@@ -309,9 +309,7 @@ class Form
             $fields = $record->get('fields');
 
             // Log all fields for debugging purposes
-            error_log('=== ALL FORM FIELDS DEBUG ===');
             error_log('Form Name: ' . $form_name);
-            error_log('Raw fields data: ' . print_r($fields, true));
 
             // Initialize children array
             $children = [];
