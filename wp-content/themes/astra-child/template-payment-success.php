@@ -15,16 +15,10 @@ if ($order_id > 0) {
     $payment_data = get_transient('payment_data_' . $order_id);
     if ($payment_data && isset($payment_data['form_name'])) {
         $form_name = $payment_data['form_name'];
+        // Clean up now that we've used it
+        delete_transient('payment_data_' . $order_id);
     }
 }
-
-// DEBUG: Log what we found
-error_log("Thank-you page - Order ID: $order_id");
-error_log("Thank-you page - Payment data: " . print_r($payment_data, true));
-error_log("Thank-you page - Form name: '$form_name'");
-
-// DEBUG: Show on page temporarily
-echo "<!-- DEBUG: Order ID: $order_id, Form Name: '$form_name' -->";
 ?>
 
 <!-- JSON-LD Structured Data -->
