@@ -174,7 +174,7 @@ class Form
             }
 
             // Clean up transient
-            delete_transient('payment_data_' . $payment_id);
+            // delete_transient('payment_data_' . $payment_id);
 
             wp_send_json($result);
         } catch (Exception $e) {

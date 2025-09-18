@@ -8,6 +8,20 @@ $payment_pending = isset($_GET['payment_pending']) && $_GET['payment_pending'] =
 // Add these for SDK payments without breaking existing code
 $confirmation = isset($_GET['confirmation']) ? sanitize_text_field($_GET['confirmation']) : '';
 $method = isset($_GET['method']) ? sanitize_text_field($_GET['method']) : '';
+
+// Get form name from stored payment data
+$form_name = '';
+if ($order_id > 0) {
+    $payment_data = get_transient('payment_data_' . $order_id);
+    if ($payment_data && isset($payment_data['form_name'])) {
+        $form_name = $payment_data['form_name'];
+        // Clean up now that we've used it
+        delete_transient('payment_data_' . $order_id);
+    }
+}
+
+// DEBUG: Log what we found
+error_log("Thank-you page - Form name: '$form_name'");
 ?>
 
 <!-- JSON-LD Structured Data -->
@@ -109,10 +123,6 @@ $method = isset($_GET['method']) ? sanitize_text_field($_GET['method']) : '';
         <?php endif; ?>
     </div>
 </div>
-
-<?php
-$form_name = isset($_GET['form']) ? urldecode($_GET['form']) : '';
-?>
 
 <script> //gtags
   const formConversions = {
