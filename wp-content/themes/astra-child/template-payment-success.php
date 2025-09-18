@@ -112,7 +112,6 @@ $method = isset($_GET['method']) ? sanitize_text_field($_GET['method']) : '';
 
 <?php
 $form_name = isset($_GET['form']) ? urldecode($_GET['form']) : '';
-echo 'form name:', $form_name;
 ?>
 
 <script> //gtags
