@@ -924,6 +924,7 @@ class Form
             'pageField[phone]' => preg_replace('/[^0-9]/', '', $phone),
             'pageField[email]' => $email,
             'cField1' => $strapi_id,
+            'paymentNum' => 1,
             'id' => $strapi_id,
         ];
 
