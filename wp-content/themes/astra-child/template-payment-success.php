@@ -21,12 +21,7 @@ if ($order_id > 0) {
 }
 
 // DEBUG: Log what we found
-error_log("Thank-you page - Order ID: $order_id");
-error_log("Thank-you page - Payment data: " . print_r($payment_data, true));
 error_log("Thank-you page - Form name: '$form_name'");
-
-// DEBUG: Show on page temporarily
-echo "<!-- DEBUG: Order ID: $order_id, Form Name: '$form_name' -->";
 ?>
 
 <!-- JSON-LD Structured Data -->
