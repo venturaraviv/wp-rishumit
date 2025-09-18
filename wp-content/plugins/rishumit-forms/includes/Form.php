@@ -141,25 +141,102 @@ class Form
 
         add_action('wp_ajax_create_payment_process', [$this, 'ajaxCreatePaymentProcess']);
         add_action('wp_ajax_nopriv_create_payment_process', [$this, 'ajaxCreatePaymentProcess']);
+
+        add_action('wp_ajax_check_payment_status', [$this, 'ajaxCheckPaymentStatus']);
+        add_action('wp_ajax_nopriv_check_payment_status', [$this, 'ajaxCheckPaymentStatus']);
+    }
+
+    public function ajaxCheckPaymentStatus()
+    {
+        try {
+            if (!wp_verify_nonce($_POST['nonce'], 'payment_process_nonce')) {
+                wp_send_json(['success' => false, 'message' => 'Security check failed']);
+                return;
+            }
+
+            $payment_id = intval($_POST['payment_id']);
+
+            if ($payment_id <= 0) {
+                wp_send_json(['success' => false, 'message' => 'Invalid payment ID']);
+                return;
+            }
+
+            // For now, always return pending - let Meshulam handle the actual payment flow
+            wp_send_json([
+                'success' => true,
+                'status' => 'pending',
+                'confirmation_number' => '',
+                'payment_method' => 'card'
+            ]);
+
+        } catch (Exception $e) {
+            error_log('Payment status check error: ' . $e->getMessage());
+            wp_send_json(['success' => false, 'message' => 'Status check failed']);
+        }
     }
 
     public function ajaxCreatePaymentProcess()
     {
         try {
-            if (!wp_verify_nonce($_POST['nonce'], 'payment_process_nonce')) {
-                wp_die('Security check failed');
+            // Enhanced security check
+            if (!isset($_POST['nonce']) || !wp_verify_nonce($_POST['nonce'], 'payment_process_nonce')) {
+                error_log('Payment AJAX: Security check failed');
+                wp_send_json(['success' => false, 'message' => 'Security check failed']);
+                return;
+            }
+
+            // Validate payment_id
+            if (!isset($_POST['payment_id']) || empty($_POST['payment_id'])) {
+                error_log('Payment AJAX: Missing payment_id');
+                wp_send_json(['success' => false, 'message' => 'Missing payment ID']);
+                return;
             }
 
             $payment_id = intval($_POST['payment_id']);
 
-            // Get payment data from transient
-            $payment_data = get_transient('payment_data_' . $payment_id);
-
-            if (!$payment_data) {
-                wp_send_json(['success' => false, 'message' => 'Payment data expired']);
+            if ($payment_id <= 0) {
+                error_log('Payment AJAX: Invalid payment_id: ' . $_POST['payment_id']);
+                wp_send_json(['success' => false, 'message' => 'Invalid payment ID']);
                 return;
             }
 
+            error_log("Processing payment for ID: $payment_id");
+
+            // Get payment data from transient
+            $payment_data = get_transient('payment_data_' . $payment_id);
+
+            if (!$payment_data || !is_array($payment_data)) {
+                error_log("Payment data not found or invalid for ID: $payment_id");
+
+                // Check if transient exists but is corrupted
+                $all_transients = get_option('_transient_timeout_payment_data_' . $payment_id);
+                if ($all_transients) {
+                    error_log("Transient exists but data is corrupted for payment ID: $payment_id");
+                }
+
+                wp_send_json(['success' => false, 'message' => 'Payment session expired. Please try again.']);
+                return;
+            }
+
+            // Validate required payment data fields
+            $required_fields = ['full_name', 'phone', 'email', 'form_name', 'strapi_id'];
+            $missing_fields = [];
+
+            foreach ($required_fields as $field) {
+                if (!isset($payment_data[$field]) || empty($payment_data[$field])) {
+                    $missing_fields[] = $field;
+                }
+            }
+
+            if (!empty($missing_fields)) {
+                error_log("Missing payment data fields: " . implode(', ', $missing_fields));
+                wp_send_json(['success' => false, 'message' => 'Incomplete payment data']);
+                return;
+            }
+
+            error_log("Creating payment process with data: " . print_r($payment_data, true));
+
+            // Create the payment process
             $result = $this->createPaymentProcess(
                 $payment_data['full_name'],
                 $payment_data['phone'],
@@ -168,17 +245,44 @@ class Form
                 $payment_data['strapi_id']
             );
 
-            // Add the Strapi ID to the response
-            if ($result['success']) {
-                $result['strapiId'] = $payment_data['strapi_id'];
+            // Enhanced response validation
+            if (!$result || !is_array($result)) {
+                error_log("Payment process returned invalid result");
+                wp_send_json(['success' => false, 'message' => 'Invalid payment process result']);
+                return;
             }
 
-            // Clean up transient
+            if (!$result['success']) {
+                error_log("Payment process failed: " . ($result['message'] ?? 'Unknown error'));
+                wp_send_json($result); // Return the error as-is
+                return;
+            }
+
+            // Validate authCode in successful response
+            if (empty($result['authCode']) || !is_string($result['authCode'])) {
+                error_log("Payment process succeeded but authCode is invalid: " . var_export($result['authCode'], true));
+                wp_send_json(['success' => false, 'message' => 'Invalid authorization code received']);
+                return;
+            }
+
+            // Add the Strapi ID to the response
+            $result['strapiId'] = $payment_data['strapi_id'];
+
+            error_log("Payment process successful - returning result: " . print_r($result, true));
+
+            // Clean up transient only after successful processing
             delete_transient('payment_data_' . $payment_id);
 
             wp_send_json($result);
+
         } catch (Exception $e) {
-            wp_send_json(['success' => false, 'message' => $e->getMessage()]);
+            error_log('Payment AJAX Exception: ' . $e->getMessage());
+            error_log('Payment AJAX Exception trace: ' . $e->getTraceAsString());
+            wp_send_json(['success' => false, 'message' => 'Payment processing error: ' . $e->getMessage()]);
+        } catch (Error $e) {
+            error_log('Payment AJAX Fatal Error: ' . $e->getMessage());
+            error_log('Payment AJAX Fatal Error trace: ' . $e->getTraceAsString());
+            wp_send_json(['success' => false, 'message' => 'System error occurred']);
         }
     }
 
@@ -890,13 +994,24 @@ class Form
             ? 'https://meshulam.co.il/api/light/server/1.0/createPaymentProcess'
             : 'https://sandbox.meshulam.co.il/api/light/server/1.0/createPaymentProcess';
 
+        // Enhanced phone validation and formatting
         if (!empty($phone)) {
             $phone = preg_replace('/[^0-9]/', '', $phone);
-            if (strlen($phone) == 9 && substr($phone, 0, 1) != '0') {
+
+            // Handle Israeli phone number formats
+            if (strlen($phone) == 9 && !in_array(substr($phone, 0, 1), ['0', '1'])) {
                 $phone = '0' . $phone;
             }
+
+            // Validate phone length and format
             if (strlen($phone) < 9 || strlen($phone) > 12) {
-                error_log("Phone number had invalid length after formatting: $phone. Using fallback.");
+                error_log("Phone number invalid length after formatting: $phone. Using fallback.");
+                $phone = '0500000000';
+            }
+
+            // Ensure Israeli mobile format
+            if (!preg_match('/^05\d{8}$/', $phone)) {
+                error_log("Phone number doesn't match Israeli mobile format: $phone. Using fallback.");
                 $phone = '0500000000';
             }
         } else {
@@ -904,54 +1019,155 @@ class Form
             $phone = '0500000000';
         }
 
-        if (empty(trim($full_name)) || strlen(trim($full_name)) < 3) {
+        // Enhanced name validation
+        $full_name = trim($full_name);
+        if (empty($full_name) || strlen($full_name) < 2) {
             error_log("Name invalid for Meshulam payment: '$full_name'");
             $full_name = "Customer " . $strapi_id;
         }
+
+        // Remove special characters that might cause issues
+        $full_name = preg_replace('/[^\p{L}\p{N}\s\-\.]/u', '', $full_name);
+
         if (strlen($full_name) > 50) {
             $full_name = substr($full_name, 0, 47) . '...';
+        }
+
+        // Enhanced email validation
+        if (!empty($email) && !filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            error_log("Invalid email format: $email. Using fallback.");
+            $email = "customer{$strapi_id}@rishumit.online";
+        }
+
+        // Validate required credentials
+        if (empty($this->userId) || empty($this->pageCode)) {
+            error_log("Missing Meshulam credentials - userId: " . ($this->userId ?: 'EMPTY') . ", pageCode: " . ($this->pageCode ?: 'EMPTY'));
+            return ['success' => false, 'message' => 'Payment system configuration error'];
+        }
+
+        $amount = $this->getAmountByForm($form_name);
+
+        // Validate amount
+        if ($amount <= 0) {
+            error_log("Invalid amount for form '$form_name': $amount");
+            return ['success' => false, 'message' => 'Invalid payment amount'];
         }
 
         $params = [
             'userId' => $this->userId,
             'pageCode' => $this->pageCode,
-            'sum' => $this->getAmountByForm($form_name),
+            'sum' => $amount,
             'successUrl' => site_url('/thank-you?id=' . $strapi_id . '&form=' . urlencode($form_name)),
             'cancelUrl' => site_url('/payment-cancelled?id=' . $strapi_id),
             'notifyUrl' => $this->notifyUrl,
             'description' => 'Form: ' . $form_name . ' / ID: ' . $strapi_id,
-            'pageField[fullName]' => trim($full_name),
-            'pageField[phone]' => preg_replace('/[^0-9]/', '', $phone),
+            'pageField[fullName]' => $full_name,
+            'pageField[phone]' => $phone,
             'pageField[email]' => $email,
             'cField1' => $strapi_id,
             'id' => $strapi_id,
         ];
 
+        // Log the request for debugging
+        error_log("Meshulam API Request - Endpoint: $endpoint");
+        error_log("Meshulam API Request - Params: " . print_r($params, true));
+
         $response = wp_remote_post($endpoint, [
             'method' => 'POST',
             'body' => $params,
             'timeout' => 45,
+            'headers' => [
+                'Content-Type' => 'application/x-www-form-urlencoded',
+                'User-Agent' => 'WordPress/' . get_bloginfo('version') . '; ' . site_url()
+            ]
         ]);
 
         if (is_wp_error($response)) {
-            error_log("Meshulam error: " . $response->get_error_message());
-            return ['success' => false, 'message' => $response->get_error_message()];
+            $error_message = $response->get_error_message();
+            error_log("Meshulam WP Error: " . $error_message);
+            return ['success' => false, 'message' => 'Connection to payment gateway failed: ' . $error_message];
         }
 
-        $body = json_decode(wp_remote_retrieve_body($response), true);
+        $response_code = wp_remote_retrieve_response_code($response);
+        $response_body = wp_remote_retrieve_body($response);
+
+        error_log("Meshulam Response Code: $response_code");
+        error_log("Meshulam Response Body: " . $response_body);
+
+        // Check HTTP response code
+        if ($response_code !== 200) {
+            error_log("Meshulam returned HTTP error code: $response_code");
+            return ['success' => false, 'message' => "Payment gateway error (HTTP $response_code)"];
+        }
+
+        // Check if response body is empty
+        if (empty($response_body)) {
+            error_log("Meshulam returned empty response body");
+            return ['success' => false, 'message' => 'Empty response from payment gateway'];
+        }
+
+        // Try to decode JSON response
+        $body = json_decode($response_body, true);
+
+        if (json_last_error() !== JSON_ERROR_NONE) {
+            error_log("Meshulam JSON decode error: " . json_last_error_msg());
+            error_log("Raw response: " . $response_body);
+            return ['success' => false, 'message' => 'Invalid response format from payment gateway'];
+        }
+
         error_log("Decoded Meshulam response: " . print_r($body, true));
 
-        if (!isset($body['status']) || $body['status'] !== 1) {
-            error_log("Meshulam payment creation failed: " .
-                (isset($body['err']['message']) ? $body['err']['message'] : 'Unknown error'));
-            return ['success' => false, 'message' => 'Payment process creation failed'];
+        // Check if the response indicates success
+        if (!isset($body['status'])) {
+            error_log("Meshulam response missing status field");
+            return ['success' => false, 'message' => 'Invalid response structure from payment gateway'];
         }
+
+        if ($body['status'] !== 1) {
+            $error_message = 'Payment process creation failed';
+
+            // Try to get more specific error message
+            if (isset($body['err']['message'])) {
+                $error_message = $body['err']['message'];
+            } elseif (isset($body['err']) && is_string($body['err'])) {
+                $error_message = $body['err'];
+            } elseif (isset($body['message'])) {
+                $error_message = $body['message'];
+            }
+
+            error_log("Meshulam payment creation failed. Status: " . $body['status'] . ", Error: " . $error_message);
+            return ['success' => false, 'message' => $error_message];
+        }
+
+        // Validate the response data structure
+        if (!isset($body['data']) || !is_array($body['data'])) {
+            error_log("Meshulam response missing or invalid data field");
+            return ['success' => false, 'message' => 'Invalid payment data from gateway'];
+        }
+
+        $authCode = $body['data']['authCode'] ?? null;
+        $processId = $body['data']['processId'] ?? null;
+        $processToken = $body['data']['processToken'] ?? null;
+
+        // Validate authCode
+        if (empty($authCode) || !is_string($authCode) || strlen($authCode) < 10) {
+            error_log("Invalid authCode received from Meshulam: " . var_export($authCode, true));
+            return ['success' => false, 'message' => 'Invalid payment authorization code received'];
+        }
+
+        // Validate processId
+        if (empty($processId)) {
+            error_log("Missing processId from Meshulam response");
+            return ['success' => false, 'message' => 'Missing payment process ID'];
+        }
+
+        error_log("Payment process created successfully - AuthCode: $authCode, ProcessID: $processId");
 
         return [
             'success' => true,
-            'authCode' => $body['data']['authCode'] ?? null,
-            'processId' => $body['data']['processId'] ?? null,
-            'processToken' => $body['data']['processToken'] ?? null
+            'authCode' => $authCode,
+            'processId' => $processId,
+            'processToken' => $processToken
         ];
     }
 
