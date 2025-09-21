@@ -4,24 +4,15 @@ get_header();
 
 $order_id = isset($_GET['id']) ? intval($_GET['id']) : 0;
 $payment_pending = isset($_GET['payment_pending']) && $_GET['payment_pending'] == '1';
+$conversion_id = isset($_GET['conversion_id']) ? sanitize_text_field($_GET['conversion_id']) : '';
+$form_name = isset($_GET['form']) ? urldecode(sanitize_text_field($_GET['form'])) : '';
 
 // Add these for SDK payments without breaking existing code
 $confirmation = isset($_GET['confirmation']) ? sanitize_text_field($_GET['confirmation']) : '';
 $method = isset($_GET['method']) ? sanitize_text_field($_GET['method']) : '';
 
-// Get form name from stored payment data
-$form_name = '';
-if ($order_id > 0) {
-    $payment_data = get_transient('payment_data_' . $order_id);
-    if ($payment_data && isset($payment_data['form_name'])) {
-        $form_name = $payment_data['form_name'];
-        // Clean up now that we've used it
-        delete_transient('payment_data_' . $order_id);
-    }
-}
-
 // DEBUG: Log what we found
-error_log("Thank-you page - Form name: '$form_name'");
+error_log("Thank-you page - Form name: '$form_name', Conversion ID: '$conversion_id'");
 ?>
 
 <!-- JSON-LD Structured Data -->
@@ -66,6 +57,10 @@ error_log("Thank-you page - Form name: '$form_name'");
             <p>הטופס שלך נשלח בהצלחה והתשלום התקבל. הבקשה שלך נמצאת בטיפול.</p>
         <?php endif; ?>
         <p>מספר ההזמנה שלך: <strong><?php echo esc_html($order_id); ?></strong></p>
+        
+        <?php if (!empty($form_name)): ?>
+            <p>סוג הבקשה: <strong><?php echo esc_html($form_name); ?></strong></p>
+        <?php endif; ?>
         
         <?php if (!empty($confirmation)): ?>
             <p>מספר אישור התשלום: <strong><?php echo esc_html($confirmation); ?></strong></p>

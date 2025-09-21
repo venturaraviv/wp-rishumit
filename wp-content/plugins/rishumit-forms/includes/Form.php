@@ -885,76 +885,99 @@ class Form
     }
 
     private function createPaymentProcess($full_name, $phone, $email, $form_name, $strapi_id)
-    {
-        $endpoint = $this->isProd
-            ? 'https://meshulam.co.il/api/light/server/1.0/createPaymentProcess'
-            : 'https://sandbox.meshulam.co.il/api/light/server/1.0/createPaymentProcess';
+{
+    $endpoint = $this->isProd
+        ? 'https://meshulam.co.il/api/light/server/1.0/createPaymentProcess'
+        : 'https://sandbox.meshulam.co.il/api/light/server/1.0/createPaymentProcess';
 
-        if (!empty($phone)) {
-            $phone = preg_replace('/[^0-9]/', '', $phone);
-            if (strlen($phone) == 9 && substr($phone, 0, 1) != '0') {
-                $phone = '0' . $phone;
-            }
-            if (strlen($phone) < 9 || strlen($phone) > 12) {
-                error_log("Phone number had invalid length after formatting: $phone. Using fallback.");
-                $phone = '0500000000';
-            }
-        } else {
-            error_log("Phone was empty. Using fallback.");
+    if (!empty($phone)) {
+        $phone = preg_replace('/[^0-9]/', '', $phone);
+        if (strlen($phone) == 9 && substr($phone, 0, 1) != '0') {
+            $phone = '0' . $phone;
+        }
+        if (strlen($phone) < 9 || strlen($phone) > 12) {
+            error_log("Phone number had invalid length after formatting: $phone. Using fallback.");
             $phone = '0500000000';
         }
-
-        if (empty(trim($full_name)) || strlen(trim($full_name)) < 3) {
-            error_log("Name invalid for Meshulam payment: '$full_name'");
-            $full_name = "Customer " . $strapi_id;
-        }
-        if (strlen($full_name) > 50) {
-            $full_name = substr($full_name, 0, 47) . '...';
-        }
-
-        $params = [
-            'userId' => $this->userId,
-            'pageCode' => $this->pageCode,
-            'sum' => $this->getAmountByForm($form_name),
-            'successUrl' => site_url('/thank-you?id=' . $strapi_id . '&form=' . urlencode($form_name)),
-            'cancelUrl' => site_url('/payment-cancelled?id=' . $strapi_id),
-            'notifyUrl' => $this->notifyUrl,
-            'description' => 'Form: ' . $form_name . ' / ID: ' . $strapi_id,
-            'pageField[fullName]' => trim($full_name),
-            'pageField[phone]' => preg_replace('/[^0-9]/', '', $phone),
-            'pageField[email]' => $email,
-            'cField1' => $strapi_id,
-            'paymentNum' => 1,
-            'id' => $strapi_id,
-        ];
-
-        $response = wp_remote_post($endpoint, [
-            'method' => 'POST',
-            'body' => $params,
-            'timeout' => 45,
-        ]);
-
-        if (is_wp_error($response)) {
-            error_log("Meshulam error: " . $response->get_error_message());
-            return ['success' => false, 'message' => $response->get_error_message()];
-        }
-
-        $body = json_decode(wp_remote_retrieve_body($response), true);
-        error_log("Decoded Meshulam response: " . print_r($body, true));
-
-        if (!isset($body['status']) || $body['status'] !== 1) {
-            error_log("Meshulam payment creation failed: " .
-                (isset($body['err']['message']) ? $body['err']['message'] : 'Unknown error'));
-            return ['success' => false, 'message' => 'Payment process creation failed'];
-        }
-
-        return [
-            'success' => true,
-            'authCode' => $body['data']['authCode'] ?? null,
-            'processId' => $body['data']['processId'] ?? null,
-            'processToken' => $body['data']['processToken'] ?? null
-        ];
+    } else {
+        error_log("Phone was empty. Using fallback.");
+        $phone = '0500000000';
     }
+
+    if (empty(trim($full_name)) || strlen(trim($full_name)) < 3) {
+        error_log("Name invalid for Meshulam payment: '$full_name'");
+        $full_name = "Customer " . $strapi_id;
+    }
+    if (strlen($full_name) > 50) {
+        $full_name = substr($full_name, 0, 47) . '...';
+    }
+
+    // Get conversion_id based on form name
+    $conversion_id = $this->getConversionIdByForm($form_name);
+
+    $params = [
+        'userId' => $this->userId,
+        'pageCode' => $this->pageCode,
+        'sum' => $this->getAmountByForm($form_name),
+        'successUrl' => site_url('/thank-you?conversion_id=' . $conversion_id . '&id=' . $strapi_id . '&form=' . urlencode($form_name)),
+        'cancelUrl' => site_url('/payment-cancelled?id=' . $strapi_id),
+        'notifyUrl' => $this->notifyUrl,
+        'description' => 'Form: ' . $form_name . ' / ID: ' . $strapi_id,
+        'pageField[fullName]' => trim($full_name),
+        'pageField[phone]' => preg_replace('/[^0-9]/', '', $phone),
+        'pageField[email]' => $email,
+        'cField1' => $strapi_id,
+        'paymentNum' => 1,
+        'id' => $strapi_id,
+    ];
+
+    $response = wp_remote_post($endpoint, [
+        'method' => 'POST',
+        'body' => $params,
+        'timeout' => 45,
+    ]);
+
+    if (is_wp_error($response)) {
+        error_log("Meshulam error: " . $response->get_error_message());
+        return ['success' => false, 'message' => $response->get_error_message()];
+    }
+
+    $body = json_decode(wp_remote_retrieve_body($response), true);
+    error_log("Decoded Meshulam response: " . print_r($body, true));
+
+    if (!isset($body['status']) || $body['status'] !== 1) {
+        error_log("Meshulam payment creation failed: " .
+            (isset($body['err']['message']) ? $body['err']['message'] : 'Unknown error'));
+        return ['success' => false, 'message' => 'Payment process creation failed'];
+    }
+
+    return [
+        'success' => true,
+        'authCode' => $body['data']['authCode'] ?? null,
+        'processId' => $body['data']['processId'] ?? null,
+        'processToken' => $body['data']['processToken'] ?? null
+    ];
+}
+
+private function getConversionIdByForm($form_name)
+{
+    $conversion_ids = [
+        'ESTA' => 'visa',
+        'Green Form' => 'driver',
+        'Birth Name Registration' => 'baby',
+        'Change Address' => 'shinuy',
+        'Tax coordination' => 'coordination',
+        'Registration Summary' => 'info',
+        'IDF Certificates' => 'military',
+        'Birth Certificate' => 'leida',
+        'Death Certificate' => 'death',
+        'ID appendix' => 'appendix',
+        'Tabu Service' => 'nesach',
+        'Income Tax Exemption' => 'tax' // Added a reasonable default for this one
+    ];
+
+    return $conversion_ids[$form_name] ?? 'general';
+}
 
 
     private function getAmountByForm($form_name)
