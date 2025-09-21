@@ -106,8 +106,6 @@ class RishumitPaymentSDK {
           ) {
             if (!this.paymentProcessed.has(paymentData.payment_id)) {
               this.log("PAYMENT TRIGGER DETECTED:", paymentData);
-              this.paymentProcessed.add(paymentData.payment_id);
-              this.currentPaymentId = paymentData.payment_id;
 
               const delay = this.isMobile ? 500 : 100;
               setTimeout(() => {
@@ -125,6 +123,13 @@ class RishumitPaymentSDK {
   }
 
   loadSDKAndProcess(paymentId) {
+    if (this.paymentProcessed.has(paymentId)) {
+      this.log("Payment already processed for ID:", paymentId);
+      return; // Exit early
+    }
+
+    this.paymentProcessed.add(paymentId);
+
     this.log("loadSDKAndProcess called with ID:", paymentId);
     this.paymentStartTime = Date.now();
 
