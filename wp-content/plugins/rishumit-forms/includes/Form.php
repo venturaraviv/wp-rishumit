@@ -392,19 +392,6 @@ class Form
                     $user_phone = $fields['phone']['value'];
                 }
 
-                // Store payment data for frontend
-                $payment_data = [
-                    'strapi_id' => $response_id,
-                    'full_name' => $user['שם פרטי'] . ' ' . ($user['שם משפחה'] ?? ''),
-                    'phone' => $user_phone,
-                    'email' => $user['email'] ?? '',
-                    'form_name' => $form_name,
-                    'amount' => $this->getAmountByForm($form_name)
-                ];
-
-                // Store in session/transient for frontend to access
-                set_transient('payment_data_' . $response_id, $payment_data, 300); // 5 minutes
-
                 $handler->add_success_message(__("הטופס נשלח בהצלחה. מכין תשלום...", "rishumit-plugin"));
 
                 if (method_exists($handler, 'add_response_data')) {
@@ -955,7 +942,8 @@ class Form
         'success' => true,
         'authCode' => $body['data']['authCode'] ?? null,
         'processId' => $body['data']['processId'] ?? null,
-        'processToken' => $body['data']['processToken'] ?? null
+        'processToken' => $body['data']['processToken'] ?? null,
+        'successUrl' => $params['successUrl'] 
     ];
 }
 

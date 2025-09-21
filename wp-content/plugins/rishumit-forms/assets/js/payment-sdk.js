@@ -125,13 +125,33 @@ class RishumitPaymentSDK {
     this.showSuccessMessage("התשלום בוצע בהצלחה! מעביר לעמוד אישור...");
 
     setTimeout(() => {
-      const confirmationNumber = result.confirmation_number || "";
-      const paymentMethod = result.payment_method || "card";
-      const strapiId = this.currentStrapiId || "";
+      // Try to use stored success URL if available
+      let redirectUrl = this.storedSuccessUrl;
 
-      let redirectUrl = `/thank-you?confirmation=${confirmationNumber}&method=${paymentMethod}`;
-      if (strapiId) {
-        redirectUrl += `&id=${strapiId}`;
+      if (!redirectUrl) {
+        // Fallback to building URL
+        const confirmationNumber = result.confirmation_number || "";
+        const paymentMethod = result.payment_method || "card";
+        const strapiId = this.currentStrapiId || "";
+
+        redirectUrl = `/thank-you?confirmation=${confirmationNumber}&method=${paymentMethod}`;
+        if (strapiId) {
+          redirectUrl += `&id=${strapiId}`;
+        }
+      } else {
+        // Add confirmation details to existing URL if not present
+        const confirmationNumber = result.confirmation_number || "";
+        const paymentMethod = result.payment_method || "card";
+
+        if (confirmationNumber && !redirectUrl.includes("confirmation=")) {
+          const separator = redirectUrl.includes("?") ? "&" : "?";
+          redirectUrl += `${separator}confirmation=${confirmationNumber}`;
+        }
+
+        if (paymentMethod && !redirectUrl.includes("method=")) {
+          const separator = redirectUrl.includes("?") ? "&" : "?";
+          redirectUrl += `${separator}method=${paymentMethod}`;
+        }
       }
 
       window.location.href = redirectUrl;
@@ -378,6 +398,12 @@ class RishumitPaymentSDK {
         this.log("Payment process created, authCode:", response.authCode);
         this.currentStrapiId = response.strapiId || paymentId;
 
+        // NEW: Store the success URL for later use
+        if (response.successUrl) {
+          this.storedSuccessUrl = response.successUrl;
+          this.log("Stored success URL:", this.storedSuccessUrl);
+        }
+
         if (typeof growPayment !== "undefined" && this.sdkInitialized) {
           this.log("Calling growPayment.renderPaymentOptions");
 
@@ -490,16 +516,47 @@ class RishumitPaymentSDK {
   performSuccessRedirect(response) {
     this.resetPaymentState();
 
-    const confirmationNumber = response.data?.confirmation_number || "";
-    const paymentMethod = response.data?.payment_method || "";
-    const strapiId = this.currentStrapiId || "";
+    // First, try to get the success URL from the payment response
+    // Meshulam might return the exact URL we specified in PHP
+    let redirectUrl = null;
 
-    let redirectUrl = `/thank-you?confirmation=${confirmationNumber}&method=${paymentMethod}`;
-    if (strapiId) {
-      redirectUrl += `&id=${strapiId}`;
+    if (response.successUrl) {
+      redirectUrl = response.successUrl;
+      this.log("Using success URL from payment response:", redirectUrl);
+    } else if (response.data?.successUrl) {
+      redirectUrl = response.data.successUrl;
+      this.log("Using success URL from payment response data:", redirectUrl);
     }
 
-    this.log("Redirecting to:", redirectUrl);
+    // If no success URL provided, build our own (fallback)
+    if (!redirectUrl) {
+      const confirmationNumber = response.data?.confirmation_number || "";
+      const paymentMethod = response.data?.payment_method || "";
+      const strapiId = this.currentStrapiId || "";
+
+      redirectUrl = `/thank-you?confirmation=${confirmationNumber}&method=${paymentMethod}`;
+      if (strapiId) {
+        redirectUrl += `&id=${strapiId}`;
+      }
+
+      this.log("Built fallback redirect URL:", redirectUrl);
+    } else {
+      // If we have a success URL, just add confirmation and method if they're not already there
+      const confirmationNumber = response.data?.confirmation_number || "";
+      const paymentMethod = response.data?.payment_method || "";
+
+      if (confirmationNumber && !redirectUrl.includes("confirmation=")) {
+        const separator = redirectUrl.includes("?") ? "&" : "?";
+        redirectUrl += `${separator}confirmation=${confirmationNumber}`;
+      }
+
+      if (paymentMethod && !redirectUrl.includes("method=")) {
+        const separator = redirectUrl.includes("?") ? "&" : "?";
+        redirectUrl += `${separator}method=${paymentMethod}`;
+      }
+    }
+
+    this.log("Final redirect URL:", redirectUrl);
     window.location.href = redirectUrl;
   }
 
