@@ -126,24 +126,3 @@ function rishumit_enqueue_payment_assets()
     }
 }
 add_action('wp_enqueue_scripts', 'rishumit_enqueue_payment_assets');
-
-// Handle payment status check for mobile
-add_action('wp_ajax_check_payment_status', 'check_payment_status');
-add_action('wp_ajax_nopriv_check_payment_status', 'check_payment_status');
-
-function check_payment_status()
-{
-    if (!wp_verify_nonce($_POST['nonce'], 'payment_process_nonce')) {
-        wp_die('Security check failed');
-    }
-
-    $payment_id = sanitize_text_field($_POST['payment_id']);
-
-    // Always return pending during payment process - let the real payment flow happen
-    wp_send_json([
-        'success' => true,
-        'status' => 'pending', // Changed from 'paid' to 'pending'
-        'confirmation_number' => '',
-        'payment_method' => 'card'
-    ]);
-}
