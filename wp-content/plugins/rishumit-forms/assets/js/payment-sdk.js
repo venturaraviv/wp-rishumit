@@ -516,20 +516,11 @@ class RishumitPaymentSDK {
   performSuccessRedirect(response) {
     this.resetPaymentState();
 
-    // First, try to get the success URL from the payment response
-    // Meshulam might return the exact URL we specified in PHP
-    let redirectUrl = null;
+    // Use the stored success URL first (this is what we want!)
+    let redirectUrl = this.storedSuccessUrl;
 
-    if (response.successUrl) {
-      redirectUrl = response.successUrl;
-      this.log("Using success URL from payment response:", redirectUrl);
-    } else if (response.data?.successUrl) {
-      redirectUrl = response.data.successUrl;
-      this.log("Using success URL from payment response data:", redirectUrl);
-    }
-
-    // If no success URL provided, build our own (fallback)
     if (!redirectUrl) {
+      // Only fall back if no stored URL
       const confirmationNumber = response.data?.confirmation_number || "";
       const paymentMethod = response.data?.payment_method || "";
       const strapiId = this.currentStrapiId || "";
@@ -538,10 +529,8 @@ class RishumitPaymentSDK {
       if (strapiId) {
         redirectUrl += `&id=${strapiId}`;
       }
-
-      this.log("Built fallback redirect URL:", redirectUrl);
     } else {
-      // If we have a success URL, just add confirmation and method if they're not already there
+      // Add confirmation details to the stored URL
       const confirmationNumber = response.data?.confirmation_number || "";
       const paymentMethod = response.data?.payment_method || "";
 
