@@ -31,6 +31,7 @@ function translatePaymentMethod($method) {
         'googlepay' => 'Google Pay',
         'apple_pay' => 'Apple Pay',
         'applepay' => 'Apple Pay',
+        'bit' => 'Bit',
         'bank_transfer' => 'העברה בנקאית',
         'card' => 'כרטיס אשראי',
     ];
