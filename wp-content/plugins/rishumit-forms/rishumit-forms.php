@@ -73,6 +73,12 @@ add_action('wp_enqueue_scripts', 'rishumit_custom_validation_messages');
 
 function rishumit_enqueue_payment_assets()
 {
+    static $assets_loaded = false;
+    if ($assets_loaded) {
+        return;
+    }
+    $assets_loaded = true;
+
     // Only enqueue on pages with forms
     if (is_page() || is_single()) {
         // Get plugin URL
@@ -100,7 +106,7 @@ function rishumit_enqueue_payment_assets()
             'rishumit-payment-sdk',
             $plugin_url . 'assets/js/payment-sdk.js',
             ['jquery', 'apple-pay-sdk'], // Add dependency on Apple Pay SDK
-            '1.0.5',
+            '1.0.6',
             true
         );
 

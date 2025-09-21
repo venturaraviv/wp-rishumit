@@ -1,3 +1,9 @@
+if (window.rishumitPaymentSDKLoaded) {
+  console.log("[PaymentSDK] Script already loaded, exiting");
+  return; // This will exit the entire script execution
+}
+window.rishumitPaymentSDKLoaded = true;
+
 if (window.rishumitPaymentSDK) {
   console.log("[PaymentSDK] Already initialized, skipping duplicate");
   // Don't initialize again if already exists
