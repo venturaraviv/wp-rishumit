@@ -1019,7 +1019,8 @@ private function getConversionIdByForm($form_name)
     
     // Exclusion patterns for fields that contain ID keywords but aren't ID fields
     $exclusion_patterns = [
-        'תאריך', 'date', 'birth', 'לידה', 'הנפק', 'issue', 'expir', 'תוקף'
+        'תאריך', 'date', 'birth', 'לידה', 'הנפק', 'issue', 'expir', 'תוקף',
+        'צילום', 'photo', 'upload', 'file', 'image', 'jpg', 'png', 'pdf'  // Add these
     ];
     
     // Check if this field represents an Israeli ID
