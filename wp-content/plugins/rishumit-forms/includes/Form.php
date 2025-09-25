@@ -744,7 +744,8 @@ class Form
             // Extract spouse data
             $spouse['first_name'] = isset($fields['spouse_first_name']['value']) ? $fields['spouse_first_name']['value'] : '';
             $spouse['last_name'] = isset($fields['spouse_last_name']['value']) ? $fields['spouse_last_name']['value'] : '';
-            $spouse['id_number'] = isset($fields['spouse_id']['value']) ? $fields['spouse_id']['value'] : '';
+            $spouse['id_number'] = isset($fields['spouse_id']['value']) ? 
+                $this->preserveIsraeliIDFormat($fields['spouse_id']['value'], 'spouse_id', 'id_number') : '';
             $spouse['father_name'] = isset($fields['spouse_father_name']['value']) ? $fields['spouse_father_name']['value'] : '';
             $spouse['mother_name'] = isset($fields['spouse_mother_name']['value']) ? $fields['spouse_mother_name']['value'] : '';
             $spouse['birth_year'] = isset($fields['spouse_birth_year']['value']) ? $fields['spouse_birth_year']['value'] : '';
@@ -787,7 +788,8 @@ class Form
             // Collect data for each child if available, using proper array access
             $first_name = isset($fields[$first_name_field]['value']) ? $fields[$first_name_field]['value'] : '';
             $last_name = isset($fields[$last_name_field]['value']) ? $fields[$last_name_field]['value'] : '';
-            $id = isset($fields[$id_field]['value']) ? $fields[$id_field]['value'] : '';
+            $id = isset($fields[$id_field]['value']) ? 
+                $this->preserveIsraeliIDFormat($fields[$id_field]['value'], $id_field, 'id') : '';
             $father_name = isset($fields[$father_name_field]['value']) ? $fields[$father_name_field]['value'] : '';
             $mother_name = isset($fields[$mother_name_field]['value']) ? $fields[$mother_name_field]['value'] : '';
             $birth_year = isset($fields[$birth_year_field]['value']) ? $fields[$birth_year_field]['value'] : '';
