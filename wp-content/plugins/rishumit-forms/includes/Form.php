@@ -495,7 +495,8 @@ class Form
                 }
 
                 // Map field to its appropriate user data key
-                $user_data[$field_title] = isset($field['value']) ? strval($field['value']) : '';
+                $originalValue = isset($field['value']) ? strval($field['value']) : '';
+                $user_data[$field_title] = $this->preserveIsraeliIDFormat($originalValue, $field_key, $field_title);
 
                 if ($form_name !== 'Tabu Service') {
                     if ($field_key == 'phone') {
@@ -595,7 +596,8 @@ class Form
 
             // Add the field to non-employer data if it has a value
             if (isset($field['value'])) {
-                $non_employer_data[$key] = $field['value'];
+                $originalValue = $field['value'];
+                $non_employer_data[$key] = $this->preserveIsraeliIDFormat($originalValue, $field_key, $key);
             }
         }
 
@@ -1000,6 +1002,50 @@ private function getConversionIdByForm($form_name)
 
         return $amounts[$form_name] ?? 159;
     }
+
+    private function preserveIsraeliIDFormat($value, $fieldKey, $fieldTitle) 
+{
+    // List of field keys and titles that should be treated as Israeli IDs
+    $id_field_indicators = [
+        // Field keys (English)
+        'ssn', 'id', 'id_number', 'teudat_zehut', 'tz',
+        // Hebrew indicators (will match partial strings)
+        'תעודת זהות', 'ת.ז', 'מספר זהות', 'זהות', 'תז',
+        // Child and spouse patterns
+        'child_', 'spouse_id'
+    ];
+    
+    // Check if this field represents an Israeli ID
+    $isIDField = false;
+    
+    // Check both field key and title
+    $searchStrings = [$fieldKey, $fieldTitle];
+    
+    foreach ($searchStrings as $searchString) {
+        foreach ($id_field_indicators as $indicator) {
+            if (strpos($searchString, $indicator) !== false) {
+                $isIDField = true;
+                break 2; // Break out of both loops
+            }
+        }
+    }
+    
+    // If it's an ID field and exactly 8 digits, add leading zero
+    if ($isIDField && !empty($value)) {
+        // Remove all non-digits
+        $cleanId = preg_replace('/\D/', '', $value);
+        
+        // Only pad if it's exactly 8 digits
+        if (strlen($cleanId) === 8) {
+            return '0' . $cleanId;
+        }
+        
+        // Return the cleaned ID as-is for other lengths
+        return $cleanId;
+    }
+    
+    return $value;
+}
 
 
 }
