@@ -1008,24 +1008,43 @@ private function getConversionIdByForm($form_name)
     // List of field keys and titles that should be treated as Israeli IDs
     $id_field_indicators = [
         // Field keys (English)
-        'ssn', 'id', 'id_number', 'teudat_zehut', 'tz',
-        // Hebrew indicators (will match partial strings)
-        'תעודת זהות', 'ת.ז', 'מספר זהות', 'זהות', 'תז',
+        'ssn', 'id', 'id_number', 'teudat_zehut',
+        // Hebrew indicators - more specific patterns
+        'מספר תעודת זהות', 'מספר זהות', 'תעודת זהות', 'מספר ת.ז',
         // Child and spouse patterns
         'child_', 'spouse_id'
     ];
     
+    // Exclusion patterns for fields that contain ID keywords but aren't ID fields
+    $exclusion_patterns = [
+        'תאריך', 'date', 'birth', 'לידה', 'הנפק', 'issue', 'expir', 'תוקף'
+    ];
+    
     // Check if this field represents an Israeli ID
     $isIDField = false;
+    $isExcluded = false;
     
     // Check both field key and title
     $searchStrings = [$fieldKey, $fieldTitle];
     
+    // First check for exclusions
     foreach ($searchStrings as $searchString) {
-        foreach ($id_field_indicators as $indicator) {
-            if (strpos($searchString, $indicator) !== false) {
-                $isIDField = true;
-                break 2; // Break out of both loops
+        foreach ($exclusion_patterns as $exclusion) {
+            if (strpos($searchString, $exclusion) !== false) {
+                $isExcluded = true;
+                break 2;
+            }
+        }
+    }
+    
+    // If not excluded, check if it's an ID field
+    if (!$isExcluded) {
+        foreach ($searchStrings as $searchString) {
+            foreach ($id_field_indicators as $indicator) {
+                if (strpos($searchString, $indicator) !== false) {
+                    $isIDField = true;
+                    break 2;
+                }
             }
         }
     }
