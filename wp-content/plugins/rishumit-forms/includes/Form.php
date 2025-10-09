@@ -926,6 +926,7 @@ class Form
         'successUrl' => site_url('/thank-you?conversion_id=' . $conversion_id . '&id=' . $strapi_id . '&form=' . urlencode($form_name)),
         'cancelUrl' => site_url('/payment-cancelled?id=' . $strapi_id),
         'notifyUrl' => $this->notifyUrl,
+        'invoiceNotifyUrl' => $this->notifyUrl, 
         'description' => 'Form: ' . $form_name . ' / ID: ' . $strapi_id,
         'pageField[fullName]' => trim($full_name),
         'pageField[phone]' => preg_replace('/[^0-9]/', '', $phone),
