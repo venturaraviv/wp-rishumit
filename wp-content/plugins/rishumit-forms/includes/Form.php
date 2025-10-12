@@ -744,7 +744,7 @@ class Form
             // Extract spouse data
             $spouse['first_name'] = isset($fields['spouse_first_name']['value']) ? $fields['spouse_first_name']['value'] : '';
             $spouse['last_name'] = isset($fields['spouse_last_name']['value']) ? $fields['spouse_last_name']['value'] : '';
-            $spouse['id_number'] = isset($fields['spouse_id']['value']) ? 
+            $spouse['id_number'] = isset($fields['spouse_id']['value']) ?
                 $this->preserveIsraeliIDFormat($fields['spouse_id']['value'], 'spouse_id', 'id_number') : '';
             $spouse['father_name'] = isset($fields['spouse_father_name']['value']) ? $fields['spouse_father_name']['value'] : '';
             $spouse['mother_name'] = isset($fields['spouse_mother_name']['value']) ? $fields['spouse_mother_name']['value'] : '';
@@ -788,7 +788,7 @@ class Form
             // Collect data for each child if available, using proper array access
             $first_name = isset($fields[$first_name_field]['value']) ? $fields[$first_name_field]['value'] : '';
             $last_name = isset($fields[$last_name_field]['value']) ? $fields[$last_name_field]['value'] : '';
-            $id = isset($fields[$id_field]['value']) ? 
+            $id = isset($fields[$id_field]['value']) ?
                 $this->preserveIsraeliIDFormat($fields[$id_field]['value'], $id_field, 'id') : '';
             $father_name = isset($fields[$father_name_field]['value']) ? $fields[$father_name_field]['value'] : '';
             $mother_name = isset($fields[$mother_name_field]['value']) ? $fields[$mother_name_field]['value'] : '';
@@ -889,186 +889,205 @@ class Form
     }
 
     private function createPaymentProcess($full_name, $phone, $email, $form_name, $strapi_id)
-{
-    $endpoint = $this->isProd
-        ? 'https://meshulam.co.il/api/light/server/1.0/createPaymentProcess'
-        : 'https://sandbox.meshulam.co.il/api/light/server/1.0/createPaymentProcess';
+    {
+        $endpoint = $this->isProd
+            ? 'https://meshulam.co.il/api/light/server/1.0/createPaymentProcess'
+            : 'https://sandbox.meshulam.co.il/api/light/server/1.0/createPaymentProcess';
 
-    if (!empty($phone)) {
-        $phone = preg_replace('/[^0-9]/', '', $phone);
-        if (strlen($phone) == 9 && substr($phone, 0, 1) != '0') {
-            $phone = '0' . $phone;
-        }
-        if (strlen($phone) < 9 || strlen($phone) > 12) {
-            error_log("Phone number had invalid length after formatting: $phone. Using fallback.");
+        if (!empty($phone)) {
+            $phone = preg_replace('/[^0-9]/', '', $phone);
+            if (strlen($phone) == 9 && substr($phone, 0, 1) != '0') {
+                $phone = '0' . $phone;
+            }
+            if (strlen($phone) < 9 || strlen($phone) > 12) {
+                error_log("Phone number had invalid length after formatting: $phone. Using fallback.");
+                $phone = '0500000000';
+            }
+        } else {
+            error_log("Phone was empty. Using fallback.");
             $phone = '0500000000';
         }
-    } else {
-        error_log("Phone was empty. Using fallback.");
-        $phone = '0500000000';
+
+        if (empty(trim($full_name)) || strlen(trim($full_name)) < 3) {
+            error_log("Name invalid for Meshulam payment: '$full_name'");
+            $full_name = "Customer " . $strapi_id;
+        }
+        if (strlen($full_name) > 50) {
+            $full_name = substr($full_name, 0, 47) . '...';
+        }
+
+        // Get conversion_id and Hebrew name based on form name
+        $conversion_id = $this->getConversionIdByForm($form_name);
+        $hebrew_form_name = $this->getHebrewFormName($form_name);
+
+        $params = [
+            'userId' => $this->userId,
+            'pageCode' => $this->pageCode,
+            'sum' => $this->getAmountByForm($form_name),
+            'successUrl' => site_url('/thank-you?conversion_id=' . $conversion_id . '&id=' . $strapi_id . '&form=' . urlencode($form_name)),
+            'cancelUrl' => site_url('/payment-cancelled?id=' . $strapi_id),
+            'notifyUrl' => $this->notifyUrl,
+            'invoiceNotifyUrl' => $this->notifyUrl,
+            'description' => $hebrew_form_name . ' / ID: ' . $strapi_id,
+            'pageField[fullName]' => trim($full_name),
+            'pageField[phone]' => preg_replace('/[^0-9]/', '', $phone),
+            'pageField[email]' => $email,
+            'cField1' => $strapi_id,
+            'paymentNum' => 1,
+            'id' => $strapi_id,
+        ];
+
+        $response = wp_remote_post($endpoint, [
+            'method' => 'POST',
+            'body' => $params,
+            'timeout' => 45,
+        ]);
+
+        if (is_wp_error($response)) {
+            error_log("Meshulam error: " . $response->get_error_message());
+            return ['success' => false, 'message' => $response->get_error_message()];
+        }
+
+        $body = json_decode(wp_remote_retrieve_body($response), true);
+        error_log("Decoded Meshulam response: " . print_r($body, true));
+
+        if (!isset($body['status']) || $body['status'] !== 1) {
+            error_log("Meshulam payment creation failed: " .
+                (isset($body['err']['message']) ? $body['err']['message'] : 'Unknown error'));
+            return ['success' => false, 'message' => 'Payment process creation failed'];
+        }
+
+        return [
+            'success' => true,
+            'authCode' => $body['data']['authCode'] ?? null,
+            'processId' => $body['data']['processId'] ?? null,
+            'processToken' => $body['data']['processToken'] ?? null,
+            'successUrl' => $params['successUrl']
+        ];
     }
 
-    if (empty(trim($full_name)) || strlen(trim($full_name)) < 3) {
-        error_log("Name invalid for Meshulam payment: '$full_name'");
-        $full_name = "Customer " . $strapi_id;
-    }
-    if (strlen($full_name) > 50) {
-        $full_name = substr($full_name, 0, 47) . '...';
-    }
+    private function getHebrewFormName($form_name)
+    {
+        $hebrew_names = [
+            'ESTA' => 'ESTA לארה"ב',
+            'Green Form' => 'טופס ירוק',
+            'Birth Name Registration' => 'רישום שם הנולד',
+            'Tax coordination' => 'תיאום מס',
+            'IDF Certificates' => 'אישור מצה"ל',
+            'ID appendix' => 'ספח תעודת זהות',
+            'Change Address' => 'שינוי כתובת',
+            'Registration Summary' => 'תמצית רישום',
+            'Birth Certificate' => 'תעודת לידה',
+            'Death Certificate' => 'תעודת פטירה',
+            'Tabu Service' => 'נסח טאבו'
+        ];
 
-    // Get conversion_id based on form name
-    $conversion_id = $this->getConversionIdByForm($form_name);
-
-    $params = [
-        'userId' => $this->userId,
-        'pageCode' => $this->pageCode,
-        'sum' => $this->getAmountByForm($form_name),
-        'successUrl' => site_url('/thank-you?conversion_id=' . $conversion_id . '&id=' . $strapi_id . '&form=' . urlencode($form_name)),
-        'cancelUrl' => site_url('/payment-cancelled?id=' . $strapi_id),
-        'notifyUrl' => $this->notifyUrl,
-        'invoiceNotifyUrl' => $this->notifyUrl, 
-        'description' => 'Form: ' . $form_name . ' / ID: ' . $strapi_id,
-        'pageField[fullName]' => trim($full_name),
-        'pageField[phone]' => preg_replace('/[^0-9]/', '', $phone),
-        'pageField[email]' => $email,
-        'cField1' => $strapi_id,
-        'paymentNum' => 1,
-        'id' => $strapi_id,
-    ];
-
-    $response = wp_remote_post($endpoint, [
-        'method' => 'POST',
-        'body' => $params,
-        'timeout' => 45,
-    ]);
-
-    if (is_wp_error($response)) {
-        error_log("Meshulam error: " . $response->get_error_message());
-        return ['success' => false, 'message' => $response->get_error_message()];
+        return $hebrew_names[$form_name] ?? $form_name;
     }
 
-    $body = json_decode(wp_remote_retrieve_body($response), true);
-    error_log("Decoded Meshulam response: " . print_r($body, true));
+    private function getConversionIdByForm($form_name)
+    {
+        $conversion_ids = [
+            'ESTA' => 'visa',
+            'Green Form' => 'driver',
+            'Birth Name Registration' => 'baby',
+            'Change Address' => 'shinuy',
+            'Tax coordination' => 'coordination',
+            'Registration Summary' => 'info',
+            'IDF Certificates' => 'military',
+            'Birth Certificate' => 'leida',
+            'Death Certificate' => 'death',
+            'ID appendix' => 'appendix',
+            'Tabu Service' => 'nesach',
+            'Income Tax Exemption' => 'tax'
+        ];
 
-    if (!isset($body['status']) || $body['status'] !== 1) {
-        error_log("Meshulam payment creation failed: " .
-            (isset($body['err']['message']) ? $body['err']['message'] : 'Unknown error'));
-        return ['success' => false, 'message' => 'Payment process creation failed'];
+        return $conversion_ids[$form_name] ?? 'general';
     }
-
-    return [
-        'success' => true,
-        'authCode' => $body['data']['authCode'] ?? null,
-        'processId' => $body['data']['processId'] ?? null,
-        'processToken' => $body['data']['processToken'] ?? null,
-        'successUrl' => $params['successUrl'] 
-    ];
-}
-
-private function getConversionIdByForm($form_name)
-{
-    $conversion_ids = [
-        'ESTA' => 'visa',
-        'Green Form' => 'driver',
-        'Birth Name Registration' => 'baby',
-        'Change Address' => 'shinuy',
-        'Tax coordination' => 'coordination',
-        'Registration Summary' => 'info',
-        'IDF Certificates' => 'military',
-        'Birth Certificate' => 'leida',
-        'Death Certificate' => 'death',
-        'ID appendix' => 'appendix',
-        'Tabu Service' => 'nesach',
-        'Income Tax Exemption' => 'tax' // Added a reasonable default for this one
-    ];
-
-    return $conversion_ids[$form_name] ?? 'general';
-}
-
 
     private function getAmountByForm($form_name)
     {
         $amounts = [
-        'ESTA' => 299,
-        'Green Form' => 189,
-        'Income Tax Exemption' => 239,
-        'Birth Name Registration' => 189,
-        'Tax coordination' => 229,
-        'IDF Certificates' => 159,
-        'ID appendix' => 189,
-        'Change Address' => 189,
-        'Registration Summary' => 189,
-        'Birth Certificate' => 189,
-        'Death Certificate' => 189,
-        'Tabu Service' => 189
-    ];
+            'ESTA' => 299,
+            'Green Form' => 189,
+            'Income Tax Exemption' => 239,
+            'Birth Name Registration' => 189,
+            'Tax coordination' => 229,
+            'IDF Certificates' => 159,
+            'ID appendix' => 189,
+            'Change Address' => 189,
+            'Registration Summary' => 189,
+            'Birth Certificate' => 189,
+            'Death Certificate' => 189,
+            'Tabu Service' => 189
+        ];
 
         return $amounts[$form_name] ?? 159;
     }
 
-    private function preserveIsraeliIDFormat($value, $fieldKey, $fieldTitle) 
-{
-    // List of field keys and titles that should be treated as Israeli IDs
-    $id_field_indicators = [
-        // Field keys (English)
-        'ssn', 'id', 'id_number', 'teudat_zehut',
-        // Hebrew indicators - more specific patterns
-        'מספר תעודת זהות', 'מספר זהות', 'תעודת זהות', 'מספר ת.ז',
-        // Child and spouse patterns
-        'child_', 'spouse_id'
-    ];
-    
-    // Exclusion patterns for fields that contain ID keywords but aren't ID fields
-    $exclusion_patterns = [
-        'תאריך', 'date', 'birth', 'לידה', 'הנפק', 'issue', 'expir', 'תוקף',
-        'צילום', 'photo', 'upload', 'file', 'image', 'jpg', 'png', 'pdf'  // Add these
-    ];
-    
-    // Check if this field represents an Israeli ID
-    $isIDField = false;
-    $isExcluded = false;
-    
-    // Check both field key and title
-    $searchStrings = [$fieldKey, $fieldTitle];
-    
-    // First check for exclusions
-    foreach ($searchStrings as $searchString) {
-        foreach ($exclusion_patterns as $exclusion) {
-            if (strpos($searchString, $exclusion) !== false) {
-                $isExcluded = true;
-                break 2;
-            }
-        }
-    }
-    
-    // If not excluded, check if it's an ID field
-    if (!$isExcluded) {
+    private function preserveIsraeliIDFormat($value, $fieldKey, $fieldTitle)
+    {
+        // List of field keys and titles that should be treated as Israeli IDs
+        $id_field_indicators = [
+            // Field keys (English)
+            'ssn', 'id', 'id_number', 'teudat_zehut',
+            // Hebrew indicators - more specific patterns
+            'מספר תעודת זהות', 'מספר זהות', 'תעודת זהות', 'מספר ת.ז',
+            // Child and spouse patterns
+            'child_', 'spouse_id'
+        ];
+
+        // Exclusion patterns for fields that contain ID keywords but aren't ID fields
+        $exclusion_patterns = [
+            'תאריך', 'date', 'birth', 'לידה', 'הנפק', 'issue', 'expir', 'תוקף',
+            'צילום', 'photo', 'upload', 'file', 'image', 'jpg', 'png', 'pdf'  // Add these
+        ];
+
+        // Check if this field represents an Israeli ID
+        $isIDField = false;
+        $isExcluded = false;
+
+        // Check both field key and title
+        $searchStrings = [$fieldKey, $fieldTitle];
+
+        // First check for exclusions
         foreach ($searchStrings as $searchString) {
-            foreach ($id_field_indicators as $indicator) {
-                if (strpos($searchString, $indicator) !== false) {
-                    $isIDField = true;
+            foreach ($exclusion_patterns as $exclusion) {
+                if (strpos($searchString, $exclusion) !== false) {
+                    $isExcluded = true;
                     break 2;
                 }
             }
         }
-    }
-    
-    // If it's an ID field and exactly 8 digits, add leading zero
-    if ($isIDField && !empty($value)) {
-        // Remove all non-digits
-        $cleanId = preg_replace('/\D/', '', $value);
-        
-        // Only pad if it's exactly 8 digits
-        if (strlen($cleanId) === 8) {
-            return '0' . $cleanId;
+
+        // If not excluded, check if it's an ID field
+        if (!$isExcluded) {
+            foreach ($searchStrings as $searchString) {
+                foreach ($id_field_indicators as $indicator) {
+                    if (strpos($searchString, $indicator) !== false) {
+                        $isIDField = true;
+                        break 2;
+                    }
+                }
+            }
         }
-        
-        // Return the cleaned ID as-is for other lengths
-        return $cleanId;
+
+        // If it's an ID field and exactly 8 digits, add leading zero
+        if ($isIDField && !empty($value)) {
+            // Remove all non-digits
+            $cleanId = preg_replace('/\D/', '', $value);
+
+            // Only pad if it's exactly 8 digits
+            if (strlen($cleanId) === 8) {
+                return '0' . $cleanId;
+            }
+
+            // Return the cleaned ID as-is for other lengths
+            return $cleanId;
+        }
+
+        return $value;
     }
-    
-    return $value;
-}
 
 
 }
