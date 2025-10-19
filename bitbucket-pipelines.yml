@@ -11,7 +11,7 @@ pipelines:
           script:
             - echo "Deploying to WP Engine Production"
             - mkdir -p ~/.ssh
-            - echo "$SSH_KEY_PROD" | base64 -d > ~/.ssh/id_rsa
+            - echo "$SSH_KEY" | base64 -d > ~/.ssh/id_rsa
             - chmod 600 ~/.ssh/id_rsa
             - ssh-keyscan git.wpengine.com >> ~/.ssh/known_hosts
             - git push --force git@git.wpengine.com:rishumit1.git main:master
