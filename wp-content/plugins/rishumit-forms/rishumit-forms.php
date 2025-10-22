@@ -99,7 +99,6 @@ function rishumit_enqueue_payment_assets()
 }
 add_action('wp_enqueue_scripts', 'rishumit_enqueue_payment_assets');
 
-// NEW: Custom form error handler for Elementor forms
 function rishumit_custom_form_errors() {
     ?>
     <script>
@@ -124,23 +123,34 @@ function rishumit_custom_form_errors() {
             }
         }, true);
         
-        // Handle backend validation errors (PHP - Israeli ID, Phone)
-        // Monitor for AJAX complete on Elementor forms
-        $(document).ajaxComplete(function(event, xhr, settings) {
-            // Check if this is an Elementor form submission
-            if (settings.url && settings.url.indexOf('admin-ajax.php') !== -1 && 
-                settings.data && settings.data.indexOf('elementor_pro_forms_send_form') !== -1) {
-                
-                setTimeout(() => {
-                    // Find any forms with errors
-                    $('.elementor-form').each(function() {
-                        const $form = $(this);
-                        if ($form.find('.elementor-error').length > 0) {
-                            scrollToFirstError($form);
-                        }
-                    });
-                }, 200);
-            }
+        // Handle backend validation errors (Israeli ID, Phone) - IMPROVED
+        $(document).on('submit_error', '.elementor-form', function(e, error) {
+            console.log('Backend validation error detected');
+            const $form = $(this);
+            setTimeout(() => {
+                scrollToFirstError($form);
+            }, 300);
+        });
+        
+        // Backup method: watch for error class changes
+        const observer = new MutationObserver(function(mutations) {
+            mutations.forEach(function(mutation) {
+                if (mutation.target.classList.contains('elementor-field-group') && 
+                    mutation.target.classList.contains('elementor-error')) {
+                    const $form = $(mutation.target).closest('.elementor-form');
+                    setTimeout(() => {
+                        scrollToFirstError($form);
+                    }, 100);
+                }
+            });
+        });
+        
+        // Observe all form field groups
+        $('.elementor-field-group').each(function() {
+            observer.observe(this, {
+                attributes: true,
+                attributeFilter: ['class']
+            });
         });
         
         function showFormErrors($form) {
@@ -168,11 +178,11 @@ function rishumit_custom_form_errors() {
         }
         
         function scrollToFirstError($form) {
-            // Find first error (backend validation)
             const $firstErrorGroup = $form.find('.elementor-field-group.elementor-error').first();
             if ($firstErrorGroup.length) {
                 const $firstInput = $firstErrorGroup.find('input, select, textarea').first();
                 if ($firstInput.length) {
+                    console.log('Scrolling to error field:', $firstInput.attr('name'));
                     scrollToElement($firstInput);
                 }
             }
