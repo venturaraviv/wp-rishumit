@@ -37,39 +37,8 @@ function rishumit_expire_payment_link_callback($id)
     delete_option('rishumit_payment_url_' . $id);
 }
 
-// Add custom validation messages in Hebrew
-function rishumit_custom_validation_messages()
-{
-    // Only load on frontend
-    if (is_admin()) {
-        return;
-    }
-
-    // Register and enqueue the script with no source file (we'll use inline script)
-    wp_register_script('rishumit-validation-messages', false);
-
-    // Add inline script with the Hebrew validation message
-    $script = '
-    document.addEventListener("DOMContentLoaded", function() {
-        var formElements = document.querySelectorAll("input, select, textarea");
-        for (var i = 0; i < formElements.length; i++) {
-            formElements[i].oninvalid = function(e) {
-                e.target.setCustomValidity("");
-                if (!e.target.validity.valid) {
-                    e.target.setCustomValidity("אנא מלא שדה זה");
-                }
-            };
-            formElements[i].oninput = function(e) {
-                e.target.setCustomValidity("");
-            };
-        }
-    });
-    ';
-
-    wp_add_inline_script('rishumit-validation-messages', $script);
-    wp_enqueue_script('rishumit-validation-messages', '', array(), '1.0', true);
-}
-add_action('wp_enqueue_scripts', 'rishumit_custom_validation_messages');
+// REMOVED THE OLD rishumit_custom_validation_messages() FUNCTION
+// It conflicted with the new error handler below
 
 function rishumit_enqueue_payment_assets()
 {
@@ -132,3 +101,94 @@ function rishumit_enqueue_payment_assets()
     }
 }
 add_action('wp_enqueue_scripts', 'rishumit_enqueue_payment_assets');
+
+// NEW: Custom form error handler for Elementor forms
+function rishumit_custom_form_errors() {
+    ?>
+    <script>
+    jQuery(document).ready(function($) {
+        let isProcessing = false;
+        
+        // Handle HTML5 validation errors (frontend)
+        document.addEventListener('invalid', function(e) {
+            e.preventDefault();
+            
+            if (isProcessing) return;
+            isProcessing = true;
+            
+            const $form = $(e.target).closest('.elementor-form');
+            if ($form.length) {
+                setTimeout(() => {
+                    showFormErrors($form);
+                    isProcessing = false;
+                }, 100);
+            } else {
+                isProcessing = false;
+            }
+        }, true);
+        
+        // Handle backend validation errors (PHP - Israeli ID, Phone)
+        // Monitor for AJAX complete on Elementor forms
+        $(document).ajaxComplete(function(event, xhr, settings) {
+            // Check if this is an Elementor form submission
+            if (settings.url && settings.url.indexOf('admin-ajax.php') !== -1 && 
+                settings.data && settings.data.indexOf('elementor_pro_forms_send_form') !== -1) {
+                
+                setTimeout(() => {
+                    // Find any forms with errors
+                    $('.elementor-form').each(function() {
+                        const $form = $(this);
+                        if ($form.find('.elementor-error').length > 0) {
+                            scrollToFirstError($form);
+                        }
+                    });
+                }, 200);
+            }
+        });
+        
+        function showFormErrors($form) {
+            $form.find('.custom-error').remove();
+            let firstError = null;
+            
+            $form.find('input, select, textarea').each(function() {
+                const $input = $(this);
+                const $group = $input.closest('.elementor-field-group');
+                
+                if (!this.checkValidity()) {
+                    const hasNativeError = $group.find('.elementor-message-danger:not(.custom-error)').length > 0;
+                    
+                    if (!hasNativeError) {
+                        $group.append('<div class="custom-error elementor-message elementor-message-danger" style="margin-top:4px;font-size:13px;">אנא מלא שדה זה כראוי</div>');
+                    }
+                    
+                    if (!firstError) firstError = $input;
+                }
+            });
+            
+            if (firstError) {
+                scrollToElement(firstError);
+            }
+        }
+        
+        function scrollToFirstError($form) {
+            // Find first error (backend validation)
+            const $firstErrorGroup = $form.find('.elementor-field-group.elementor-error').first();
+            if ($firstErrorGroup.length) {
+                const $firstInput = $firstErrorGroup.find('input, select, textarea').first();
+                if ($firstInput.length) {
+                    scrollToElement($firstInput);
+                }
+            }
+        }
+        
+        function scrollToElement($element) {
+            $('html, body').animate({
+                scrollTop: $element.offset().top - 100
+            }, 400);
+            $element.focus();
+        }
+    });
+    </script>
+    <?php
+}
+add_action('wp_footer', 'rishumit_custom_form_errors', 999);
