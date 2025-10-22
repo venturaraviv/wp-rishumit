@@ -37,9 +37,6 @@ function rishumit_expire_payment_link_callback($id)
     delete_option('rishumit_payment_url_' . $id);
 }
 
-// REMOVED THE OLD rishumit_custom_validation_messages() FUNCTION
-// It conflicted with the new error handler below
-
 function rishumit_enqueue_payment_assets()
 {
     static $assets_loaded = false;
