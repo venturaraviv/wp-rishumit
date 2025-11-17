@@ -920,11 +920,14 @@ class Form
         $conversion_id = $this->getConversionIdByForm($form_name);
         $hebrew_form_name = $this->getHebrewFormName($form_name);
 
+        // Get the form-specific thank you page
+        $thank_you_page = $this->getThankYouPageByForm($form_name);
+
         $params = [
             'userId' => $this->userId,
             'pageCode' => $this->pageCode,
             'sum' => $this->getAmountByForm($form_name),
-            'successUrl' => site_url('/thank-you?conversion_id=' . $conversion_id . '&id=' . $strapi_id . '&form=' . urlencode($form_name)),
+            'successUrl' => site_url($thank_you_page . '?conversion_id=' . $conversion_id . '&id=' . $strapi_id . '&form=' . urlencode($form_name)),
             'cancelUrl' => site_url('/payment-cancelled?id=' . $strapi_id),
             'notifyUrl' => $this->notifyUrl,
             'invoiceNotifyUrl' => $this->notifyUrl,
@@ -1003,6 +1006,27 @@ class Form
         ];
 
         return $conversion_ids[$form_name] ?? 'general';
+    }
+
+    private function getThankYouPageByForm($form_name)
+    {
+        $thank_you_pages = [
+            'ESTA' => '/thank-you-esta',
+            'Green Form' => '/thank-you-green-form',
+            'Income Tax Exemption' => '/thank-you-tax-exemption',
+            'Birth Name Registration' => '/thank-you-birth-registration',
+            'Tax coordination' => '/thank-you-tax-coordination',
+            'IDF Certificates' => '/thank-you-idf',
+            'ID appendix' => '/thank-you-id-appendix',
+            'Change Address' => '/thank-you-address-change',
+            'Registration Summary' => '/thank-you-registration-summary',
+            'Birth Certificate' => '/thank-you-birth-certificate',
+            'Death Certificate' => '/thank-you-death-certificate',
+            'Tabu Service' => '/thank-you-tabu'
+        ];
+
+        // Default to generic thank you page if form not found
+        return $thank_you_pages[$form_name] ?? '/thank-you';
     }
 
     private function getAmountByForm($form_name)

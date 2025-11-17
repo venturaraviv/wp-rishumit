@@ -37,6 +37,16 @@ function rishumit_expire_payment_link_callback($id)
     delete_option('rishumit_payment_url_' . $id);
 }
 
+// AJAX endpoint to get fresh nonce
+add_action('wp_ajax_get_payment_nonce', 'get_fresh_payment_nonce');
+add_action('wp_ajax_nopriv_get_payment_nonce', 'get_fresh_payment_nonce');
+
+function get_fresh_payment_nonce() {
+    wp_send_json_success([
+        'nonce' => wp_create_nonce('payment_process_nonce')
+    ]);
+}
+
 function rishumit_enqueue_payment_assets()
 {
     static $assets_loaded = false;

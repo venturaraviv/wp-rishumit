@@ -368,6 +368,37 @@
         }
       }
 
+      async getFreshNonce() {
+        try {
+          const formData = new FormData();
+          formData.append("action", "get_payment_nonce");
+
+          const response = await fetch(rishumit_ajax.ajax_url, {
+            method: "POST",
+            body: formData,
+            headers: {
+              "X-Requested-With": "XMLHttpRequest",
+            },
+          });
+
+          if (!response.ok) {
+            throw new Error(`Failed to fetch nonce: ${response.status}`);
+          }
+
+          const data = await response.json();
+
+          if (data.success && data.data && data.data.nonce) {
+            return data.data.nonce;
+          } else {
+            throw new Error("Invalid nonce response");
+          }
+        } catch (error) {
+          this.error("Error fetching fresh nonce:", error);
+          // Fallback to the original nonce if fresh nonce fails
+          return rishumit_ajax.nonce;
+        }
+      }
+
       async createPaymentProcess(paymentId) {
         if (!paymentId) {
           throw new Error("Payment ID is required");
@@ -381,10 +412,15 @@
         const timeoutId = setTimeout(() => controller.abort(), 30000);
 
         try {
+          // Fetch a fresh nonce first
+          this.log("Fetching fresh nonce...");
+          const freshNonce = await this.getFreshNonce();
+          this.log("Fresh nonce received");
+
           const formData = new FormData();
           formData.append("action", "create_payment_process");
           formData.append("payment_id", paymentId);
-          formData.append("nonce", rishumit_ajax.nonce);
+          formData.append("nonce", freshNonce);
 
           const response = await fetch(rishumit_ajax.ajax_url, {
             method: "POST",
