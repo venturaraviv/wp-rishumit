@@ -10,6 +10,7 @@ class Form
     private $strapiToken;
     private $notifyUrl;
     private bool $isProd = false;
+    private bool $isLocal = false;
     private ?string $userId   = null;
     private ?string $pageCode = null;
 
@@ -20,13 +21,14 @@ class Form
 
         if (strpos($host, 'local') !== false) {
             $this->isProd = false;
+            $this->isLocal = true;
             $this->strapiEndpointRequest = 'http://localhost:1337/api/requests';
             $this->notifyUrl = 'https://a89bf1fe34ae.ngrok-free.app/api/webhooks/create'; // local
-        } elseif (strpos($host, 'rishumitstg') !== false || strpos($host, 'azurewebsites.net') !== false) {
+        } elseif (strpos($host, 'rishumitstg') !== false || strpos($host, 'azurewebsites.net') !== false || $host === 'staging-p.rishumit.online') {
             $this->isProd = false;
             $this->strapiEndpointRequest = 'https://be-rishumit.azurewebsites.net/api/requests';
             $this->notifyUrl = 'https://be-rishumit.azurewebsites.net/api/webhooks/create'; // staging
-        } elseif (in_array($host, ['rishumit.online', 'rishumit1.wpengine.com'], true)) {
+        } elseif (in_array($host, ['rishumit.online'], true)) {
             $this->isProd = true;
             $this->strapiEndpointRequest = 'https://be-rishumit-prod-f9e4fpfjebbdb0bq.israelcentral-01.azurewebsites.net/api/requests';
             $this->notifyUrl = 'https://be-rishumit-prod-f9e4fpfjebbdb0bq.israelcentral-01.azurewebsites.net/api/webhooks/create'; // prod
@@ -359,8 +361,18 @@ class Form
                 ]
             ];
 
-            // Send to Strapi and get response
-            $strapi_response = $this->sendToStrapi($this->strapiEndpointRequest, $payload);
+            // Send to Strapi and get response (BYPASS IN LOCAL MODE)
+            if ($this->isLocal) {
+                error_log('🔧 LOCAL MODE: Bypassing Strapi submission, generating fake response');
+                $strapi_response = [
+                    'success' => true,
+                    'data' => [
+                        'id' => time() // Use timestamp as fake ID
+                    ]
+                ];
+            } else {
+                $strapi_response = $this->sendToStrapi($this->strapiEndpointRequest, $payload);
+            }
 
             if (!$strapi_response['success']) {
                 // If Strapi reported an error
@@ -890,6 +902,23 @@ class Form
 
     private function createPaymentProcess($full_name, $phone, $email, $form_name, $strapi_id)
     {
+        // BYPASS PAYMENT FOR LOCAL DEVELOPMENT
+        if ($this->isLocal) {
+            error_log("🔧 LOCAL MODE: Bypassing Meshulam payment, returning fake success");
+
+            // Get conversion_id and thank you page
+            $conversion_id = $this->getConversionIdByForm($form_name);
+            $thank_you_page = $this->getThankYouPageByForm($form_name);
+
+            return [
+                'success' => true,
+                'authCode' => 'LOCAL_TEST_AUTH_CODE_' . time(),
+                'processId' => 'LOCAL_TEST_PROCESS_' . $strapi_id,
+                'processToken' => 'LOCAL_TEST_TOKEN_' . time(),
+                'successUrl' => site_url($thank_you_page . '?conversion_id=' . $conversion_id . '&id=' . $strapi_id . '&form=' . urlencode($form_name))
+            ];
+        }
+
         $endpoint = $this->isProd
             ? 'https://meshulam.co.il/api/light/server/1.0/createPaymentProcess'
             : 'https://sandbox.meshulam.co.il/api/light/server/1.0/createPaymentProcess';
@@ -1011,17 +1040,17 @@ class Form
     private function getThankYouPageByForm($form_name)
     {
         $thank_you_pages = [
-            'ESTA' => '/thank-you-esta',
-            'Green Form' => '/thank-you-green-form',
-            'Income Tax Exemption' => '/thank-you-tax-exemption',
-            'Birth Name Registration' => '/thank-you-birth-registration',
-            'Tax coordination' => '/thank-you-tax-coordination',
+            'ESTA' => '/thanks-esta',
+            'Green Form' => '/thank-you-driver',
+            'Income Tax Exemption' => '/thank-you-tax',
+            'Birth Name Registration' => '/thank-you-nolad',
+            'Tax coordination' => '/thank-you-tax',
             'IDF Certificates' => '/thank-you-idf',
-            'ID appendix' => '/thank-you-id-appendix',
-            'Change Address' => '/thank-you-address-change',
-            'Registration Summary' => '/thank-you-registration-summary',
-            'Birth Certificate' => '/thank-you-birth-certificate',
-            'Death Certificate' => '/thank-you-death-certificate',
+            'ID appendix' => '/thank-you-attach',
+            'Change Address' => '/thank-you-add',
+            'Registration Summary' => '/thank-you-summary',
+            'Birth Certificate' => '/thank-you-birth',
+            'Death Certificate' => '/thank-you-ptira',
             'Tabu Service' => '/thank-you-tabu'
         ];
 

@@ -324,6 +324,23 @@
               this.log("Stored success URL:", this.storedSuccessUrl);
             }
 
+            // CHECK IF LOCAL MODE (authCode starts with LOCAL_TEST)
+            if (response.authCode.startsWith('LOCAL_TEST_AUTH_CODE_')) {
+              this.log("🔧 LOCAL MODE DETECTED: Auto-completing payment without Meshulam");
+              this.hideLoader();
+
+              // Simulate successful payment after short delay
+              setTimeout(() => {
+                this.handlePaymentSuccess({
+                  data: {
+                    confirmation_number: 'LOCAL_' + Date.now(),
+                    payment_method: 'test'
+                  }
+                });
+              }, 1000);
+              return;
+            }
+
             if (typeof growPayment !== "undefined" && this.sdkInitialized) {
               this.log("Calling growPayment.renderPaymentOptions");
 
