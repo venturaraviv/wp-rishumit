@@ -209,3 +209,25 @@ function rishumit_custom_form_errors() {
     <?php
 }
 add_action('wp_footer', 'rishumit_custom_form_errors', 999);
+
+function rishumit_populate_otp_hidden_fields() {
+    ?>
+    <script>
+    jQuery(document).ready(function($) {
+        // Get URL parameters
+        const urlParams = new URLSearchParams(window.location.search);
+        const transactionId = urlParams.get('transaction_id');        
+
+        console.log('URL Params - Transaction ID:', transactionId);
+
+        // Find OTP form hidden fields and populate them
+        // The hidden fields should have the field names: transaction_id and request_id
+        if (transactionId) {
+            $('input[name="form_fields[transaction_id]"]').val(transactionId);
+            console.log('Set transaction_id hidden field to:', transactionId);
+        }        
+    });
+    </script>
+    <?php
+}
+add_action('wp_footer', 'rishumit_populate_otp_hidden_fields', 1000);

@@ -11,6 +11,7 @@ class Form
     private $notifyUrl;
     private bool $isProd = false;
     private bool $isLocal = false;
+    private bool $skipPayment = false;  // Skip payment in local AND staging
     private ?string $userId   = null;
     private ?string $pageCode = null;
 
@@ -22,10 +23,13 @@ class Form
         if (strpos($host, 'local') !== false) {
             $this->isProd = false;
             $this->isLocal = true;
+            $this->skipPayment = true;  // Skip payment in local
             $this->strapiEndpointRequest = 'http://localhost:1337/api/requests';
             $this->notifyUrl = 'https://a89bf1fe34ae.ngrok-free.app/api/webhooks/create'; // local
         } elseif (strpos($host, 'rishumitstg') !== false || strpos($host, 'azurewebsites.net') !== false || $host === 'staging-p.rishumit.online') {
             $this->isProd = false;
+            $this->isLocal = false;  // NOT local, but staging
+            $this->skipPayment = true;  // Skip payment in staging
             $this->strapiEndpointRequest = 'https://be-rishumit.azurewebsites.net/api/requests';
             $this->notifyUrl = 'https://be-rishumit.azurewebsites.net/api/webhooks/create'; // staging
         } elseif (in_array($host, ['rishumit.online'], true)) {
@@ -87,6 +91,7 @@ class Form
             'Birth Certificate',
             'Death Certificate',
             'Tabu Service',
+            'OTP',  // OTP verification form on thank you page
         ];
 
         // Function to check if form should be processed
@@ -312,6 +317,11 @@ class Form
 
             // Log all fields for debugging purposes
             error_log('Form Name: ' . $form_name);
+
+            // SPECIAL HANDLING FOR OTP FORM
+            if ($form_name === 'OTP') {
+                return $this->handleOTPForm($fields, $handler);
+            }
 
             // Initialize children array
             $children = [];
@@ -902,19 +912,23 @@ class Form
 
     private function createPaymentProcess($full_name, $phone, $email, $form_name, $strapi_id)
     {
-        // BYPASS PAYMENT FOR LOCAL DEVELOPMENT
-        if ($this->isLocal) {
-            error_log("🔧 LOCAL MODE: Bypassing Meshulam payment, returning fake success");
+        // BYPASS PAYMENT FOR LOCAL AND STAGING
+        if ($this->skipPayment) {
+            error_log("🔧 SKIP PAYMENT MODE: Bypassing Meshulam payment, returning fake success");
 
             // Get conversion_id and thank you page
             $conversion_id = $this->getConversionIdByForm($form_name);
             $thank_you_page = $this->getThankYouPageByForm($form_name);
+
+            // Generate fake transaction ID for local testing
+            $fake_transaction_id = 'LOCAL_TXN_' . $strapi_id . '_' . time();
 
             return [
                 'success' => true,
                 'authCode' => 'LOCAL_TEST_AUTH_CODE_' . time(),
                 'processId' => 'LOCAL_TEST_PROCESS_' . $strapi_id,
                 'processToken' => 'LOCAL_TEST_TOKEN_' . time(),
+                'transactionId' => $fake_transaction_id,
                 'successUrl' => site_url($thank_you_page . '?conversion_id=' . $conversion_id . '&id=' . $strapi_id . '&form=' . urlencode($form_name))
             ];
         }
@@ -1142,5 +1156,66 @@ class Form
         return $value;
     }
 
+    private function handleOTPForm($fields, $handler)
+    {
+        error_log('🔐 OTP FORM SUBMITTED');
+        error_log('Form fields received: ' . print_r(array_keys($fields), true));
+
+        // Get OTP code from form field
+        $otp_code = isset($fields['otp_code']['value']) ? $fields['otp_code']['value'] : '';
+
+        // Get transaction_id and request_id from hidden form fields (populated by JavaScript)
+        $transaction_id = isset($fields['transaction_id']['value']) ? sanitize_text_field($fields['transaction_id']['value']) : '';
+
+        error_log('OTP Code: ' . $otp_code);
+        error_log('Transaction ID: ' . $transaction_id);
+
+        // Validate we have required data
+        if (empty($otp_code)) {
+            error_log('❌ OTP code is missing');
+            $handler->add_error_message(__("קוד אימות חסר.", "rishumit-plugin"));
+            return false;
+        }
+
+        if (empty($transaction_id)) {
+            error_log('❌ Transaction ID is missing from URL');
+            $handler->add_error_message(__("מזהה עסקה חסר.", "rishumit-plugin"));
+            return false;
+        }
+
+        // Prepare payload for Strapi webhook
+        $payload = [
+            'otp_code' => $otp_code,
+            'transaction_id' => $transaction_id
+        ];
+
+        // Call Strapi webhook
+        $webhook_endpoint = $this->strapiEndpointRequest;
+        // Replace /api/requests with /api/webhooks/greenForm2FA
+        $webhook_endpoint = str_replace('/api/requests', '/api/webhooks/greenForm2FA', $webhook_endpoint);
+
+        error_log('Calling Strapi webhook: ' . $webhook_endpoint);
+        error_log('Payload: ' . json_encode($payload));
+
+        // // BYPASS IN LOCAL MODE
+        // if ($this->isLocal) {
+        //     error_log('🔧 LOCAL MODE: Bypassing Strapi OTP webhook call');
+        //     $handler->add_success_message(__("קוד האימות נשלח בהצלחה (מצב פיתוח).", "rishumit-plugin"));
+        //     return true;
+        // }
+
+        // Send to Strapi webhook
+        $response = $this->sendToStrapi($webhook_endpoint, $payload);
+
+        if (!$response['success']) {
+            error_log('❌ Strapi OTP webhook error: ' . $response['message']);
+            $handler->add_error_message(__("אימות נכשל: " . $response['message'], "rishumit-plugin"));
+            return false;
+        }
+
+        error_log('✅ OTP verified successfully');
+        $handler->add_success_message(__("קוד האימות אושר בהצלחה!", "rishumit-plugin"));
+        return true;
+    }
 
 }

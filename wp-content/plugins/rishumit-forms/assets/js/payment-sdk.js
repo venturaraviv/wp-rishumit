@@ -334,7 +334,8 @@
                 this.handlePaymentSuccess({
                   data: {
                     confirmation_number: 'LOCAL_' + Date.now(),
-                    payment_method: 'test'
+                    payment_method: 'test',
+                    transaction_id: response.transactionId || 'LOCAL_TXN_' + Date.now()
                   }
                 });
               }, 1000);
@@ -493,17 +494,22 @@
           // Only fall back to building URL if no stored URL
           const confirmationNumber = response.data?.confirmation_number || "";
           const paymentMethod = response.data?.payment_method || "";
+          const transactionId = response.data?.transaction_id || "";
           const strapiId = this.currentStrapiId || "";
 
           redirectUrl = `/thank-you?confirmation=${confirmationNumber}&method=${paymentMethod}`;
           if (strapiId) {
             redirectUrl += `&id=${strapiId}`;
           }
+          if (transactionId) {
+            redirectUrl += `&transaction_id=${transactionId}`;
+          }
           this.log("Built fallback redirect URL:", redirectUrl);
         } else {
           // Add confirmation details to the stored URL
           const confirmationNumber = response.data?.confirmation_number || "";
           const paymentMethod = response.data?.payment_method || "";
+          const transactionId = response.data?.transaction_id || "";
 
           if (confirmationNumber && !redirectUrl.includes("confirmation=")) {
             const separator = redirectUrl.includes("?") ? "&" : "?";
@@ -513,6 +519,11 @@
           if (paymentMethod && !redirectUrl.includes("method=")) {
             const separator = redirectUrl.includes("?") ? "&" : "?";
             redirectUrl += `${separator}method=${paymentMethod}`;
+          }
+
+          if (transactionId && !redirectUrl.includes("transaction_id=")) {
+            const separator = redirectUrl.includes("?") ? "&" : "?";
+            redirectUrl += `${separator}transaction_id=${transactionId}`;
           }
           this.log(
             "Using stored success URL with payment details:",
