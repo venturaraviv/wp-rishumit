@@ -29,7 +29,7 @@ class Form
         } elseif (strpos($host, 'rishumitstg') !== false || strpos($host, 'azurewebsites.net') !== false || $host === 'staging-p.rishumit.online') {
             $this->isProd = false;
             $this->isLocal = false;  // NOT local, but staging
-            $this->skipPayment = true;  // Skip payment in staging
+            $this->skipPayment = false;  // Skip payment in staging
             $this->strapiEndpointRequest = 'https://be-rishumit.azurewebsites.net/api/requests';
             $this->notifyUrl = 'https://be-rishumit.azurewebsites.net/api/webhooks/create'; // staging
         } elseif (in_array($host, ['rishumit.online'], true)) {
@@ -51,8 +51,6 @@ class Form
             error_log('⚠ STRAPI_API_TOKEN not defined in wp-config.php');
         }
 
-        error_log('Env: '.($this->isProd ? 'PROD' : 'NON-PROD').' host='.$host);
-
         if (defined('USERID') && defined('PAGECODE') && USERID && PAGECODE) {
             $this->userId   = USERID;
             $this->pageCode = PAGECODE;
@@ -62,7 +60,7 @@ class Form
 
             // Only complain in prod
             if ($this->isProd) {
-                error_log('❌ Meshulam USERID or PAGECODE missing in wp-config.php');
+                error_log('⚠️ USERID/PAGECODE not defined, using hardcoded defaults');
             }
         }
     }
@@ -154,6 +152,7 @@ class Form
     {
         try {
             if (!wp_verify_nonce($_POST['nonce'], 'payment_process_nonce')) {
+                error_log('❌ Nonce verification failed');
                 wp_die('Security check failed');
             }
 
@@ -163,6 +162,7 @@ class Form
             $payment_data = get_transient('payment_data_' . $payment_id);
 
             if (!$payment_data) {
+                error_log('❌ Payment data expired for ID: ' . $payment_id);
                 wp_send_json(['success' => false, 'message' => 'Payment data expired']);
                 return;
             }
@@ -180,11 +180,10 @@ class Form
                 $result['strapiId'] = $payment_data['strapi_id'];
             }
 
-            // Clean up transient
-            // delete_transient('payment_data_' . $payment_id);
-
             wp_send_json($result);
         } catch (Exception $e) {
+            error_log('❌ Exception in ajaxCreatePaymentProcess: ' . $e->getMessage());
+            error_log('Stack trace: ' . $e->getTraceAsString());
             wp_send_json(['success' => false, 'message' => $e->getMessage()]);
         }
     }
@@ -442,8 +441,6 @@ class Form
 
                 $handler->add_success_message(__("הטופס נשלח בהצלחה.", "rishumit-plugin"));
             }
-            error_log("ABOUT TO RETURN TRUE FROM END OF METHOD");
-
             return true;
 
         } catch (Exception $e) {
@@ -1055,7 +1052,7 @@ class Form
     {
         $thank_you_pages = [
             'ESTA' => '/thanks-esta',
-            'Green Form' => '/thank-you-driver',
+            'Green Form' => '/otp-verification',
             'Income Tax Exemption' => '/thank-you-tax',
             'Birth Name Registration' => '/thank-you-nolad',
             'Tax coordination' => '/thank-you-tax',
@@ -1164,11 +1161,20 @@ class Form
         // Get OTP code from form field
         $otp_code = isset($fields['otp_code']['value']) ? $fields['otp_code']['value'] : '';
 
-        // Get transaction_id and request_id from hidden form fields (populated by JavaScript)
-        $transaction_id = isset($fields['transaction_id']['value']) ? sanitize_text_field($fields['transaction_id']['value']) : '';
+        // Get invoice_number from hidden form field        
+        $invoice_number = '';
+        if (isset($fields['invoice_number']['value'])) {
+            $invoice_number = sanitize_text_field($fields['invoice_number']['value']);
+        }
+
+        // Also check URL parameters as fallback
+        if (empty($invoice_number) && isset($_GET['invoice_number'])) {
+            $invoice_number = sanitize_text_field($_GET['invoice_number']);
+            error_log('📝 Got invoice_number from URL parameter: ' . $invoice_number);
+        }
 
         error_log('OTP Code: ' . $otp_code);
-        error_log('Transaction ID: ' . $transaction_id);
+        error_log('Invoice Number: ' . $invoice_number);
 
         // Validate we have required data
         if (empty($otp_code)) {
@@ -1177,16 +1183,16 @@ class Form
             return false;
         }
 
-        if (empty($transaction_id)) {
-            error_log('❌ Transaction ID is missing from URL');
-            $handler->add_error_message(__("מזהה עסקה חסר.", "rishumit-plugin"));
+        if (empty($invoice_number)) {
+            error_log('❌ Invoice number is missing');
+            $handler->add_error_message(__("מספר חשבונית חסר.", "rishumit-plugin"));
             return false;
         }
 
         // Prepare payload for Strapi webhook
         $payload = [
             'otp_code' => $otp_code,
-            'transaction_id' => $transaction_id
+            'invoice_number' => $invoice_number
         ];
 
         // Call Strapi webhook

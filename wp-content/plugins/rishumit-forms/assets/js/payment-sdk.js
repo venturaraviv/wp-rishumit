@@ -490,43 +490,30 @@
         // Use the stored success URL first (this contains conversion_id and form)
         let redirectUrl = this.storedSuccessUrl;
 
+        // Extract invoice number from Meshulam response
+        // Meshulam returns it as "confirmation_number", but we'll pass it as "invoice_number" in URL
+        const invoiceNumber = response.data?.confirmation_number || "";
+
         if (!redirectUrl) {
           // Only fall back to building URL if no stored URL
-          const confirmationNumber = response.data?.confirmation_number || "";
-          const paymentMethod = response.data?.payment_method || "";
-          const transactionId = response.data?.transaction_id || "";
           const strapiId = this.currentStrapiId || "";
 
-          redirectUrl = `/thank-you?confirmation=${confirmationNumber}&method=${paymentMethod}`;
+          redirectUrl = `/thank-you?confirmation=${invoiceNumber}`;
           if (strapiId) {
             redirectUrl += `&id=${strapiId}`;
           }
-          if (transactionId) {
-            redirectUrl += `&transaction_id=${transactionId}`;
+          if (invoiceNumber) {
+            redirectUrl += `&invoice_number=${invoiceNumber}`;
           }
           this.log("Built fallback redirect URL:", redirectUrl);
         } else {
-          // Add confirmation details to the stored URL
-          const confirmationNumber = response.data?.confirmation_number || "";
-          const paymentMethod = response.data?.payment_method || "";
-          const transactionId = response.data?.transaction_id || "";
-
-          if (confirmationNumber && !redirectUrl.includes("confirmation=")) {
+          // Add invoice_number to the stored URL
+          if (invoiceNumber && !redirectUrl.includes("invoice_number=")) {
             const separator = redirectUrl.includes("?") ? "&" : "?";
-            redirectUrl += `${separator}confirmation=${confirmationNumber}`;
-          }
-
-          if (paymentMethod && !redirectUrl.includes("method=")) {
-            const separator = redirectUrl.includes("?") ? "&" : "?";
-            redirectUrl += `${separator}method=${paymentMethod}`;
-          }
-
-          if (transactionId && !redirectUrl.includes("transaction_id=")) {
-            const separator = redirectUrl.includes("?") ? "&" : "?";
-            redirectUrl += `${separator}transaction_id=${transactionId}`;
+            redirectUrl += `${separator}invoice_number=${invoiceNumber}`;
           }
           this.log(
-            "Using stored success URL with payment details:",
+            "Using stored success URL with invoice_number:",
             redirectUrl
           );
         }

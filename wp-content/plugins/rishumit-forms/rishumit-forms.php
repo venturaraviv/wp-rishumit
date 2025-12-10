@@ -82,7 +82,7 @@ function rishumit_enqueue_payment_assets()
             'rishumit-payment-sdk',
             $plugin_url . 'assets/js/payment-sdk.js',
             ['jquery', 'apple-pay-sdk'], // Add dependency on Apple Pay SDK
-            '1.0.7',
+            '1.0.14',  // Added invoice_number extraction and OTP form integration
             true
         );
 
@@ -216,15 +216,15 @@ function rishumit_populate_otp_hidden_fields() {
     jQuery(document).ready(function($) {
         // Get URL parameters
         const urlParams = new URLSearchParams(window.location.search);
-        const transactionId = urlParams.get('transaction_id');        
+        const invoice_number = urlParams.get('invoice_number');        
 
-        console.log('URL Params - Transaction ID:', transactionId);
+        console.log('URL Params - Invoice number:', invoice_number);
 
         // Find OTP form hidden fields and populate them
         // The hidden fields should have the field names: transaction_id and request_id
-        if (transactionId) {
-            $('input[name="form_fields[transaction_id]"]').val(transactionId);
-            console.log('Set transaction_id hidden field to:', transactionId);
+        if (invoice_number) {
+            $('input[name="form_fields[invoice_number]"]').val(invoice_number);
+            console.log('Set invoice_number hidden field to:', invoice_number);
         }        
     });
     </script>
