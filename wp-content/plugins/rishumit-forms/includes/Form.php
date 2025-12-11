@@ -97,11 +97,9 @@ class Form
             $name = $record->get_form_settings('form_name') ?? '';
 
             // Log for debugging
-            error_log("Form submission detected: '$name'");
+            // error_log("Form submission detected: '$name'");
 
             $is_allowed = in_array($name, $allowed, true);
-            error_log("Form '$name' is " . ($is_allowed ? 'ALLOWED' : 'SKIPPED'));
-
             return $is_allowed;
         };
 
@@ -1220,7 +1218,56 @@ class Form
         }
 
         error_log('✅ OTP verified successfully');
+
+        // Build redirect URL with all current URL parameters
+        $redirect_url = site_url('/thank-you-driver');
+
+        // Get URL parameters - extract from HTTP Referer header
+        $url_params = [];
+
+        // Get the referer URL (the page the form was submitted from)
+        $referer = isset($_SERVER['HTTP_REFERER']) ? $_SERVER['HTTP_REFERER'] : '';
+
+        error_log('🔍 Extracting URL parameters from referer...');
+        error_log('Referer URL: ' . $referer);
+
+        if (!empty($referer)) {
+            // Parse the URL and extract query parameters
+            $parsed_url = parse_url($referer);
+            if (isset($parsed_url['query'])) {
+                parse_str($parsed_url['query'], $url_params);
+                // Sanitize all values
+                foreach ($url_params as $key => $value) {
+                    $url_params[$key] = sanitize_text_field($value);
+                }
+                error_log('✅ URL parameters extracted from referer: ' . print_r($url_params, true));
+            } else {
+                error_log('⚠️ No query string found in referer URL');
+            }
+        } else {
+            error_log('⚠️ No referer header found');
+        }
+
+        // Build query string
+        if (!empty($url_params)) {
+            $query_string = http_build_query($url_params);
+            $redirect_url .= '?' . $query_string;
+        }
+
+        error_log('════════════════════════════════════════');
+        error_log('✅ Redirecting to thank-you-driver');
+        error_log('URL: ' . $redirect_url);
+        error_log('Parameters preserved: ' . print_r($url_params, true));
+        error_log('════════════════════════════════════════');
+
+        // Set success message
         $handler->add_success_message(__("קוד האימות אושר בהצלחה!", "rishumit-plugin"));
+
+        // Add redirect instruction to handler
+        if (method_exists($handler, 'add_response_data')) {
+            $handler->add_response_data('redirect_url', $redirect_url);
+        }
+
         return true;
     }
 

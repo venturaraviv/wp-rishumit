@@ -93,6 +93,26 @@
           return;
         }
 
+        // Before AJAX is sent, add URL parameters ONLY for OTP form
+        jQuery(document).ajaxSend((event, jqXHR, settings) => {
+          if (settings.url && settings.url.includes("admin-ajax.php")) {
+            // Check if this is an OTP form submission (check if page has invoice_number in URL)
+            const urlParams = new URLSearchParams(window.location.search);
+            const hasInvoiceNumber = urlParams.has('invoice_number');
+
+            if (hasInvoiceNumber && settings.data && typeof settings.data === 'string' && settings.data.includes('elementor_pro_forms_send_form')) {
+              // This is likely the OTP form - preserve URL params
+              const params = {};
+              for (const [key, value] of urlParams.entries()) {
+                params[key] = value;
+              }
+
+              console.log("📋 OTP Form detected - Attaching URL parameters:", params);
+              settings.data += '&url_params=' + encodeURIComponent(JSON.stringify(params));
+            }
+          }
+        });
+
         jQuery(document).ajaxSuccess((event, xhr, settings) => {
           if (
             settings.url &&
@@ -124,6 +144,28 @@
                     this.loadSDKAndProcess(paymentData.payment_id);
                   }, delay);
                 }
+              }
+
+              // Handle OTP form redirect
+              let redirectUrl = null;
+              if (response?.data?.data?.redirect_url) {
+                redirectUrl = response.data.data.redirect_url;
+              } else if (response?.data?.redirect_url) {
+                redirectUrl = response.data.redirect_url;
+              } else if (response?.redirect_url) {
+                redirectUrl = response.redirect_url;
+              }
+
+              if (redirectUrl) {
+                console.log("════════════════════════════════════════");
+                console.log("🔀 OTP FORM REDIRECT DETECTED");
+                console.log("Redirect URL:", redirectUrl);
+                console.log("Redirecting in 1.5 seconds...");
+                console.log("════════════════════════════════════════");
+
+                setTimeout(() => {
+                  window.location.href = redirectUrl;
+                }, 1500);
               }
             } catch (e) {
               // Not JSON
