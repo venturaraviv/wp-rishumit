@@ -82,7 +82,7 @@ function rishumit_enqueue_payment_assets()
             'rishumit-payment-sdk',
             $plugin_url . 'assets/js/payment-sdk.js',
             ['jquery', 'apple-pay-sdk'], // Add dependency on Apple Pay SDK
-            '1.0.20',  // Removed verbose logging, back to clean logs
+            '1.0.21',  // Added phone parameter to redirect URL
             true
         );
 

@@ -173,9 +173,10 @@ class Form
                 $payment_data['strapi_id']
             );
 
-            // Add the Strapi ID to the response
+            // Add the Strapi ID and phone to the response
             if ($result['success']) {
                 $result['strapiId'] = $payment_data['strapi_id'];
+                $result['phone'] = $payment_data['phone'];
             }
 
             wp_send_json($result);

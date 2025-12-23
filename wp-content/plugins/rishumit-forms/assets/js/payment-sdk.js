@@ -360,6 +360,7 @@
           if (response.success && response.authCode) {
             this.log("Payment process created, authCode:", response.authCode);
             this.currentStrapiId = response.strapiId || paymentId;
+            this.currentPhone = response.phone || "";
 
             if (response.successUrl) {
               this.storedSuccessUrl = response.successUrl;
@@ -535,6 +536,7 @@
         // Extract invoice number from Meshulam response
         // Meshulam returns it as "confirmation_number", but we'll pass it as "invoice_number" in URL
         const invoiceNumber = response.data?.confirmation_number || "";
+        const phoneNumber = this.currentPhone || "";
 
         if (!redirectUrl) {
           // Only fall back to building URL if no stored URL
@@ -547,15 +549,22 @@
           if (invoiceNumber) {
             redirectUrl += `&invoice_number=${invoiceNumber}`;
           }
+          if (phoneNumber) {
+            redirectUrl += `&phone=${encodeURIComponent(phoneNumber)}`;
+          }
           this.log("Built fallback redirect URL:", redirectUrl);
         } else {
-          // Add invoice_number to the stored URL
+          // Add invoice_number and phone to the stored URL
           if (invoiceNumber && !redirectUrl.includes("invoice_number=")) {
             const separator = redirectUrl.includes("?") ? "&" : "?";
             redirectUrl += `${separator}invoice_number=${invoiceNumber}`;
           }
+          if (phoneNumber && !redirectUrl.includes("phone=")) {
+            const separator = redirectUrl.includes("?") ? "&" : "?";
+            redirectUrl += `${separator}phone=${encodeURIComponent(phoneNumber)}`;
+          }
           this.log(
-            "Using stored success URL with invoice_number:",
+            "Using stored success URL with invoice_number and phone:",
             redirectUrl
           );
         }
