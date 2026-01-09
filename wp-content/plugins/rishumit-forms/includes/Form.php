@@ -1201,17 +1201,11 @@ class Form
             return false;
         }
 
-        // if (empty($invoice_number)) {
-        //     error_log('Invoice number is missing');
-        //     $handler->add_error_message(__("מספר חשבונית חסר.", "rishumit-plugin"));
-        //     return false;
-        // }
-
         // Prepare payload for Strapi webhook
         $payload = [
             'otp_code' => $otp_code,
             'invoice_number' => $invoice_number,
-            'phone' => $phone
+            'phone_number' => $phone
         ];
 
         // Call Strapi webhook
