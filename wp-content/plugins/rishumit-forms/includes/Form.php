@@ -314,7 +314,9 @@ class Form
             $fields = $record->get('fields');
 
             // Log all fields for debugging purposes
+            error_log('==================================================');        
             error_log('Form Name: ' . $form_name);
+            error_log('==================================================');
 
             // SPECIAL HANDLING FOR OTP FORM
             if ($form_name === 'OTP') {
@@ -359,7 +361,7 @@ class Form
                     $request['חתימה'] = $value;
                     unset($request[$key]);
                 }
-            }
+            }            
 
             // Wrap request data inside request_json
             $payload = [
@@ -368,6 +370,15 @@ class Form
                     'request_json' => $request,
                 ]
             ];
+
+            // Log Green Form submission with user name and payload
+            if ($form_name === 'Green Form') {
+                $user_full_name = ($user['שם פרטי'] ?? '') . ' ' . ($user['שם משפחה'] ?? '');
+                error_log('======================================================');
+                error_log('🟢 Green Form submitted by: ' . trim($user_full_name));
+                error_log('🟢 Green Form payload: ' . json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
+                error_log('======================================================');
+            }
 
             // Send to Strapi and get response (BYPASS IN LOCAL MODE)
             if ($this->isLocal) {
@@ -1154,13 +1165,14 @@ class Form
 
     private function handleOTPForm($fields, $handler)
     {
+        error_log('=====================================================');
         error_log('🔐 OTP FORM SUBMITTED');
-        error_log('Form fields received: ' . print_r(array_keys($fields), true));
+        error_log('=====================================================');
 
         // Get OTP code from form field
         $otp_code = isset($fields['otp_code']['value']) ? $fields['otp_code']['value'] : '';
 
-        // Get invoice_number from hidden form field        
+        // Get invoice_number from hidden form field
         $invoice_number = '';
         if (isset($fields['invoice_number']['value'])) {
             $invoice_number = sanitize_text_field($fields['invoice_number']['value']);
@@ -1172,26 +1184,34 @@ class Form
             error_log('📝 Got invoice_number from URL parameter: ' . $invoice_number);
         }
 
+        // Get phone from form field (field_3e248b6)
+        $phone = '';
+        if (isset($fields['field_3e248b6']['value'])) {
+            $phone = sanitize_text_field($fields['field_3e248b6']['value']);
+        }
+
         error_log('OTP Code: ' . $otp_code);
-        error_log('Invoice Number: ' . $invoice_number);
+        error_log('Phone: ' . $phone);
+        error_log('Invoice Number: ' . $invoice_number);        
 
         // Validate we have required data
         if (empty($otp_code)) {
-            error_log('❌ OTP code is missing');
+            error_log('OTP code is missing');
             $handler->add_error_message(__("קוד אימות חסר.", "rishumit-plugin"));
             return false;
         }
 
-        if (empty($invoice_number)) {
-            error_log('❌ Invoice number is missing');
-            $handler->add_error_message(__("מספר חשבונית חסר.", "rishumit-plugin"));
-            return false;
-        }
+        // if (empty($invoice_number)) {
+        //     error_log('Invoice number is missing');
+        //     $handler->add_error_message(__("מספר חשבונית חסר.", "rishumit-plugin"));
+        //     return false;
+        // }
 
         // Prepare payload for Strapi webhook
         $payload = [
             'otp_code' => $otp_code,
-            'invoice_number' => $invoice_number
+            'invoice_number' => $invoice_number,
+            'phone' => $phone
         ];
 
         // Call Strapi webhook
@@ -1213,12 +1233,12 @@ class Form
         $response = $this->sendToStrapi($webhook_endpoint, $payload);
 
         if (!$response['success']) {
-            error_log('❌ Strapi OTP webhook error: ' . $response['message']);
+            error_log('Strapi OTP webhook error: ' . $response['message']);
             $handler->add_error_message(__("אימות נכשל: " . $response['message'], "rishumit-plugin"));
             return false;
         }
 
-        error_log('✅ OTP verified successfully');
+        error_log('OTP verified successfully');
 
         // Build redirect URL with all current URL parameters
         $redirect_url = site_url('/thank-you-driver');

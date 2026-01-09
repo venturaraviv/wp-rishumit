@@ -165,7 +165,7 @@
 
                 setTimeout(() => {
                   window.location.href = redirectUrl;
-                }, 1500);
+                }, 500);
               }
             } catch (e) {
               // Not JSON
@@ -287,37 +287,52 @@
           events: {
             onSuccess: (response) => {
               this.log("SDK onSuccess triggered:", response);
+              // Log to backend immediately when SDK triggers success
+              this.logMeshulamResponse(response, 'SDK_onSuccess_triggered', null);
               this.handlePaymentSuccess(response);
             },
             onFailure: (response) => {
               this.error("SDK onFailure triggered:", response);
+              this.logMeshulamResponse(response, 'SDK_onFailure_triggered', null);
               this.handlePaymentFailure(response);
             },
             onError: (response) => {
               this.error("SDK onError triggered:", response);
+              this.logMeshulamResponse(response, 'SDK_onError_triggered', null);
               this.handlePaymentError(response);
             },
             onTimeout: (response) => {
               this.error("SDK onTimeout triggered:", response);
+              this.logMeshulamResponse(response, 'SDK_onTimeout_triggered', null);
               this.handlePaymentTimeout(response);
             },
             onWalletChange: (state) => {
               this.log("Wallet state changed:", state);
+              this.logMeshulamResponse({state: state}, 'wallet_state_' + state, null);
               this.handleWalletChange(state);
             },
             onPaymentStart: (response) => {
               this.log("Payment started in SDK:", response);
+              this.logMeshulamResponse(response, 'Payment_started', null);
               this.paymentStartTime = Date.now();
             },
             onPaymentCancel: (response) => {
               this.log("Payment cancelled:", response);
+              this.logMeshulamResponse(response, 'Payment_cancelled', null);
               this.handlePaymentCancel(response);
             },
             onPaymentComplete: (response) => {
               this.log("Payment complete (alternative event):", response);
+              // Log to backend immediately when alternative completion event triggers
+              this.logMeshulamResponse(response, 'SDK_onPaymentComplete_triggered. successHandled: ' + this.successHandled, null);
               if (!this.successHandled) {
                 this.handlePaymentSuccess(response);
               }
+            },
+            // Catch-all for any other events Meshulam might fire
+            onEvent: (eventName, data) => {
+              this.log("Meshulam SDK event:", eventName, data);
+              this.logMeshulamResponse({eventName: eventName, data: data}, 'SDK_onEvent_' + eventName, null);
             },
           },
         };
@@ -328,6 +343,11 @@
           this.log("Meshulam SDK configured successfully");
           this.sdkInitialized = true;
           this.initializationRetries = 0;
+
+          // Log all available growPayment methods for debugging
+          if (typeof growPayment === 'object') {
+            this.log("Available growPayment methods:", Object.keys(growPayment));
+          }
 
           const waitTime = this.isMobile ? 1500 : 300;
           setTimeout(() => {
@@ -530,13 +550,25 @@
       performSuccessRedirect(response) {
         this.resetPaymentState();
 
+        // Log that we entered performSuccessRedirect
+        this.logMeshulamResponse(response, 'performSuccessRedirect_ENTRY', null);
+
         // Use the stored success URL first (this contains conversion_id and form)
         let redirectUrl = this.storedSuccessUrl;
 
         // Extract invoice number from Meshulam response
         // Meshulam returns it as "confirmation_number", but we'll pass it as "invoice_number" in URL
         const invoiceNumber = response.data?.confirmation_number || "";
-        const phoneNumber = this.currentPhone || "";
+
+        // Store invoice_number in sessionStorage so it persists across back/forward navigation
+        if (invoiceNumber) {
+          sessionStorage.setItem('rishumit_invoice_number', invoiceNumber);
+          this.log("Stored invoice_number in sessionStorage:", invoiceNumber);
+          this.logMeshulamResponse({"redirectUrl": redirectUrl, "invoiceNumber": invoiceNumber}, 'Stored invoice_number in sessionStorage', null);
+        }
+
+        // Log that we entered performSuccessRedirect
+        this.logMeshulamResponse({"redirectUrl": redirectUrl, "invoiceNumber": invoiceNumber}, 'performSuccessRedirect_ENTRY2', null);
 
         if (!redirectUrl) {
           // Only fall back to building URL if no stored URL
@@ -549,28 +581,49 @@
           if (invoiceNumber) {
             redirectUrl += `&invoice_number=${invoiceNumber}`;
           }
-          if (phoneNumber) {
-            redirectUrl += `&phone=${encodeURIComponent(phoneNumber)}`;
-          }
           this.log("Built fallback redirect URL:", redirectUrl);
+          this.logMeshulamResponse({"redirectUrl": redirectUrl, "invoiceNumber": invoiceNumber}, 'Built fallback redirect URL', null);
         } else {
           // Add invoice_number and phone to the stored URL
           if (invoiceNumber && !redirectUrl.includes("invoice_number=")) {
             const separator = redirectUrl.includes("?") ? "&" : "?";
             redirectUrl += `${separator}invoice_number=${invoiceNumber}`;
           }
-          if (phoneNumber && !redirectUrl.includes("phone=")) {
-            const separator = redirectUrl.includes("?") ? "&" : "?";
-            redirectUrl += `${separator}phone=${encodeURIComponent(phoneNumber)}`;
-          }
           this.log(
-            "Using stored success URL with invoice_number and phone:",
+            "Using stored success URL with invoice_number:",
             redirectUrl
           );
+          this.logMeshulamResponse({"redirectUrl": redirectUrl, "invoiceNumber": invoiceNumber}, 'Built fallback redirect Using stored success URL with invoice_number', null);
         }
 
         this.log("Final redirect URL:", redirectUrl);
+        this.logMeshulamResponse({"redirectUrl": redirectUrl, "invoiceNumber": invoiceNumber}, 'Final redirect URL', null);
+
+        // Send Meshulam response and redirect URL to backend for logging
+        this.logMeshulamResponse(response, 'performSuccessRedirect', redirectUrl);
+
         window.location.href = redirectUrl;
+      }
+
+      logMeshulamResponse(response, context = null, redirectUrl = null) {
+        // Send the Meshulam response, context, and redirect URL to backend for logging
+        const endpoint = '/wp-json/payment/v1/log-meshulam-response';
+
+        const logData = {
+          meshulam_response: response,
+          context: context,
+          redirect_url: redirectUrl
+        };
+
+        fetch(endpoint, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(logData)
+        }).catch(error => {
+          console.error('Failed to log Meshulam response:', error);
+        });
       }
 
       handlePaymentFailure(response) {
