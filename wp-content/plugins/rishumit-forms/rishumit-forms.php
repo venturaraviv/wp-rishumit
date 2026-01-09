@@ -82,7 +82,7 @@ function rishumit_enqueue_payment_assets()
             'rishumit-payment-sdk',
             $plugin_url . 'assets/js/payment-sdk.js',
             ['jquery', 'apple-pay-sdk'], // Add dependency on Apple Pay SDK
-            '1.0.32',  // User updates
+            '1.0.34',  // User updates
             true
         );
 
@@ -449,7 +449,7 @@ function green_send_new_otp(WP_REST_Request $request) {
   // Prepare payload
   $payload = [
     'invoice_number' => $invoice_number,
-    'phone' => $phone
+    'phone_number' => $phone
   ];
 
   // Call webhook
@@ -482,7 +482,7 @@ function green_ask_voice_call(WP_REST_Request $request) {
   // Prepare payload
   $payload = [
     'invoice_number' => $invoice_number,
-    'phone' => $phone
+    'phone_number' => $phone
   ];
 
   // Call webhook
