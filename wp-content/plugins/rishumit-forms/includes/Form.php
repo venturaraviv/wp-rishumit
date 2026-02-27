@@ -3,6 +3,7 @@
 namespace RishumitPlugin\Leads;
 
 use Exception;
+use RishumitPlugin\Storage\AzureBlobStorage;
 
 class Form
 {
@@ -323,6 +324,10 @@ class Form
                 return $this->handleOTPForm($fields, $handler);
             }
 
+            // Upload files to Azure Blob Storage (replaces local URLs with Azure URLs in-place)
+            $userId = isset($fields['ssn']['value']) ? trim($fields['ssn']['value']) : 'unknown';
+            $filesToDelete = $this->processUploadedFiles($fields, $userId);
+
             // Initialize children array
             $children = [];
 
@@ -394,10 +399,19 @@ class Form
             }
 
             if (!$strapi_response['success']) {
-                // If Strapi reported an error
+                // If Strapi reported an error — do NOT delete local files
                 error_log('Strapi error: ' . $strapi_response['message']);
                 $handler->add_error_message(__("השליחה נכשלה: " . $strapi_response['message'], "rishumit-plugin"));
                 return false;
+            }
+
+            // Strapi succeeded — clean up local files that were uploaded to Azure
+            foreach ($filesToDelete as $filePath) {
+                if (file_exists($filePath) && @unlink($filePath)) {
+                    error_log("☁️ Azure Blob: Deleted local file: {$filePath}");
+                } else {
+                    error_log("☁️ Azure Blob: Could not delete local file: {$filePath}");
+                }
             }
 
             // Replace the existing redirect code in handleForms with this:
@@ -1161,6 +1175,78 @@ class Form
         }
 
         return $value;
+    }
+
+    /**
+     * Process uploaded files: upload to Azure Blob Storage and replace local URLs with Azure URLs.
+     * Returns a list of local file paths that are safe to delete after Strapi submission succeeds.
+     *
+     * @param array &$fields Form fields array (modified in-place: upload field values replaced with Azure URLs).
+     * @return array List of local file paths to delete on successful Strapi submission.
+     */
+    private function processUploadedFiles(array &$fields, string $userId = 'unknown'): array
+    {
+        $filesToDelete = [];
+
+        if (!AzureBlobStorage::isConfigured()) {
+            error_log('☁️ Azure Blob: Not configured — keeping original WP file URLs');
+            return $filesToDelete;
+        }
+
+        try {
+            $blobStorage = new AzureBlobStorage();
+        } catch (Exception $e) {
+            error_log('☁️ Azure Blob: Failed to initialize — ' . $e->getMessage());
+            return $filesToDelete;
+        }
+
+        foreach ($fields as $fieldKey => &$field) {
+            if (!isset($field['type']) || $field['type'] !== 'upload') {
+                continue;
+            }
+
+            $localUrl = $field['value'] ?? '';
+            if (empty($localUrl)) {
+                continue;
+            }
+
+            // Convert WP URL to local file path
+            $uploadDir = wp_upload_dir();
+            $localPath = str_replace($uploadDir['baseurl'], $uploadDir['basedir'], $localUrl);
+
+            // Handle multiple files (Elementor separates with comma)
+            $urls = array_map('trim', explode(',', $localUrl));
+            $paths = array_map('trim', explode(',', $localPath));
+            $newUrls = [];
+
+            for ($i = 0; $i < count($urls); $i++) {
+                $singleUrl = $urls[$i];
+                $singlePath = str_replace($uploadDir['baseurl'], $uploadDir['basedir'], $singleUrl);
+
+                if (!file_exists($singlePath)) {
+                    error_log("☁️ Azure Blob: Local file not found, keeping original URL: {$singleUrl}");
+                    $newUrls[] = $singleUrl;
+                    continue;
+                }
+
+                $azureUrl = $blobStorage->upload($singlePath, $userId);
+
+                if ($azureUrl !== null) {
+                    $newUrls[] = $azureUrl;
+                    $filesToDelete[] = $singlePath;
+                    error_log("☁️ Azure Blob: Replaced {$singleUrl} → {$azureUrl}");
+                } else {
+                    // Fallback: keep original WP URL, don't delete
+                    $newUrls[] = $singleUrl;
+                    error_log("☁️ Azure Blob: Upload failed for {$singleUrl} — keeping original WP URL");
+                }
+            }
+
+            $field['value'] = implode(', ', $newUrls);
+        }
+        unset($field); // break reference
+
+        return $filesToDelete;
     }
 
     private function handleOTPForm($fields, $handler)

@@ -14,6 +14,7 @@ if (!defined('ABSPATH')) {
 
 // Autoload classes
 require_once __DIR__ . '/includes/Form.php';
+require_once __DIR__ . '/includes/AzureBlobStorage.php';
 
 // Initialize the plugin
 function rishumit_forms_init()
@@ -82,7 +83,7 @@ function rishumit_enqueue_payment_assets()
             'rishumit-payment-sdk',
             $plugin_url . 'assets/js/payment-sdk.js',
             ['jquery', 'apple-pay-sdk'], // Add dependency on Apple Pay SDK
-            '1.0.35',  // update phone to phone_number
+            '1.0.37',  // Add form event logging endpoint
             true
         );
 
@@ -396,6 +397,13 @@ add_action('rest_api_init', function () {
     'callback' => 'log_meshulam_response',
     'permission_callback' => '__return_true',
   ]);
+
+  // Log form events
+  register_rest_route('rishumit/v1', '/log-form-event', [
+    'methods'  => 'POST',
+    'callback' => 'rishumit_log_form_event',
+    'permission_callback' => '__return_true',
+  ]);
 });
 
 function green_send_otp(WP_REST_Request $request) {
@@ -404,6 +412,7 @@ function green_send_otp(WP_REST_Request $request) {
   // Validate parameters
   $validated = validate_green_otp_params($request);
   if (isset($validated['error'])) {
+    error_log('❌ green_send_otp validation failed');
     return $validated['error'];
   }
 
@@ -422,6 +431,20 @@ function green_send_otp(WP_REST_Request $request) {
   // Call webhook
   $result = call_strapi_webhook($webhook_endpoint, $payload, 'setPhoneForOTP');
   if (isset($result['error'])) {
+    error_log('========================================================');
+    error_log('❌ green_send_otp webhook call failed');
+    // Get the actual error response
+    $error_response = $result['error'];
+    if ($error_response instanceof WP_REST_Response) {
+      $error_data = $error_response->get_data();
+      error_log('Error status: ' . $error_response->get_status());
+      error_log('Error message: ' . ($error_data['message'] ?? 'No message'));
+      error_log('Full error data: ' . print_r($error_data, true));
+    } else {
+      error_log('Error details: ' . print_r($error_response, true));
+    }
+    error_log('========================================================');
+
     return $result['error'];
   }
 
@@ -437,6 +460,7 @@ function green_send_new_otp(WP_REST_Request $request) {
   // Validate parameters
   $validated = validate_green_otp_params($request);
   if (isset($validated['error'])) {
+    error_log('❌ green_send_new_otp validation failed');
     return $validated['error'];
   }
 
@@ -455,6 +479,20 @@ function green_send_new_otp(WP_REST_Request $request) {
   // Call webhook
   $result = call_strapi_webhook($webhook_endpoint, $payload, 'sendNewOtp');
   if (isset($result['error'])) {
+    error_log('========================================================');
+    error_log('❌ green_send_new_otp webhook call failed');
+    // Get the actual error response
+    $error_response = $result['error'];
+    if ($error_response instanceof WP_REST_Response) {
+      $error_data = $error_response->get_data();
+      error_log('Error status: ' . $error_response->get_status());
+      error_log('Error message: ' . ($error_data['message'] ?? 'No message'));
+      error_log('Full error data: ' . print_r($error_data, true));
+    } else {
+      error_log('Error details: ' . print_r($error_response, true));
+    }
+    error_log('========================================================');
+
     return $result['error'];
   }
 
@@ -470,6 +508,7 @@ function green_ask_voice_call(WP_REST_Request $request) {
   // Validate parameters
   $validated = validate_green_otp_params($request);
   if (isset($validated['error'])) {
+    error_log('❌ green_ask_voice_call validation failed');
     return $validated['error'];
   }
 
@@ -488,6 +527,20 @@ function green_ask_voice_call(WP_REST_Request $request) {
   // Call webhook
   $result = call_strapi_webhook($webhook_endpoint, $payload, 'doVoiceCallOtp');
   if (isset($result['error'])) {
+    error_log('========================================================');
+    error_log('❌ green_ask_voice_call webhook call failed');
+    // Get the actual error response
+    $error_response = $result['error'];
+    if ($error_response instanceof WP_REST_Response) {
+      $error_data = $error_response->get_data();
+      error_log('Error status: ' . $error_response->get_status());
+      error_log('Error message: ' . ($error_data['message'] ?? 'No message'));
+      error_log('Full error data: ' . print_r($error_data, true));
+    } else {
+      error_log('Error details: ' . print_r($error_response, true));
+    }
+    error_log('========================================================');
+
     return $result['error'];
   }
 
@@ -519,4 +572,31 @@ function log_meshulam_response(WP_REST_Request $request) {
 
   // Return success
   return new WP_REST_Response(['ok' => true, 'message' => 'Response logged'], 200);
+}
+
+function rishumit_log_form_event(WP_REST_Request $request) {
+  error_log('📝 Form Event Logged');
+
+  // Get the data from the request
+  $data = $request->get_json_params();
+
+  // Extract fields
+  $event_type = $data['event_type'] ?? 'unknown';
+  $form_name = $data['form_name'] ?? 'unknown';
+  $message = $data['message'] ?? '';
+  $extra_data = $data['data'] ?? [];
+
+  // Log the event
+  error_log('========================================================');
+  error_log('📝 Form Event');
+  error_log('Event Type: ' . $event_type);
+  error_log('Form Name: ' . $form_name);
+  error_log('Message: ' . $message);
+  if (!empty($extra_data)) {
+    error_log('Extra Data: ' . print_r($extra_data, true));
+  }
+  error_log('========================================================');
+
+  // Return success
+  return new WP_REST_Response(['ok' => true], 200);
 }
